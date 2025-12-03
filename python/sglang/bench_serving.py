@@ -1907,13 +1907,16 @@ async def get_request(
         for request in input_requests_iter:
             yield request
 
-            if request_rate == float("inf"):
-                # If the request rate is infinity, then we don't need to wait.
+            if args.rampup_mode:
                 continue
+            else:
+                if request_rate == float("inf"):
+                    # If the request rate is infinity, then we don't need to wait.
+                    continue
 
-            # Sample the request interval from the exponential distribution.
-            interval = np.random.exponential(1.0 / request_rate)
-            # The next request will be sent after the interval.
+                # Sample the request interval from the exponential distribution.
+                interval = np.random.exponential(1.0 / request_rate)
+                # The next request will be sent after the interval.
             await asyncio.sleep(interval)
 
 
@@ -2089,7 +2092,43 @@ def calculate_metrics(
 
     return metrics, output_lens
 
+async def update_sem(
+    sem: asyncio.Semaphore,
+    ramp_up_period: float,
+    max_concurrent_requests: int,
+):
+    if max_concurrent_requests == 0:
+        return
+    if ramp_up_period == 0.0:
+        for _ in range(max_concurrent_requests):
+            sem.release()
+    update_interval = ramp_up_period / max_concurrent_requests
+    for _ in range(max_concurrent_requests):
+        await asyncio.sleep(update_interval)
+        sem.release()
 
+
+async def create_rampup_wait_task(
+    semaphore: asyncio.Semaphore,
+):
+    for _ in range(args.max_concurrency - 1):
+        await semaphore.acquire()
+    update_sem_task = asyncio.create_task(
+        update_sem(semaphore, args.ramp_up_period, args.max_concurrency - 1)
+    )
+
+    return update_sem_task
+
+
+async def cancel_rampup_wait_task(
+    update_sem_task,
+):
+    update_sem_task.cancel()
+    try:
+        await update_sem_task
+    except CancelledError:
+        pass
+    
 async def benchmark(
     backend: str,
     api_url: str,
@@ -2254,6 +2293,11 @@ async def benchmark(
         lora_probs = None
 
     pbar = None if disable_tqdm else tqdm(total=pbar_total)
+    
+    if args.rampup_mode:
+        semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency else None
+        update_sem_task = await create_rampup_wait_task(semaphore)
+    
     async for request in request_generator:
         if lora_names is not None and len(lora_names) != 0:
             if lora_request_distribution == "uniform":
@@ -2289,6 +2333,9 @@ async def benchmark(
             )
         )
     outputs: List[RequestFuncOutput] = await asyncio.gather(*tasks)
+
+    if args.rampup_mode:
+        await cancel_rampup_wait_task(update_sem_task)
 
     # Stop profiler
     if profile:
@@ -3146,5 +3193,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tag", type=str, default=None, help="The tag to be dumped to output."
     )
+    parser.add_argument(
+        "--rampup-mode",
+        action="store_true",
+        help="Specify the test mode as rampup mode.",
+    )
+    parser.add_argument("--ramp-up-period", type=float, default=0.0)
     args = parser.parse_args()
     run_benchmark(args)
