@@ -48,8 +48,6 @@ def get_local_torch_device() -> torch.device:
 
     return (
         torch.device(f"cuda:{envs.LOCAL_RANK}")
-        if current_platform.is_cuda_alike()
-        else torch.device("mps")
     )
 
 

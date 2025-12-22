@@ -131,18 +131,18 @@ class Function:
 
 class NCCLLibrary:
     exported_functions = [
-        # const char* ncclGetErrorString(ncclResult_t result)
-        Function("ncclGetErrorString", ctypes.c_char_p, [ncclResult_t]),
+        # const char* mcclGetErrorString(ncclResult_t result)
+        Function("mcclGetErrorString", ctypes.c_char_p, [ncclResult_t]),
         # ncclResult_t  ncclGetVersion(int *version);
-        Function("ncclGetVersion", ncclResult_t, [ctypes.POINTER(ctypes.c_int)]),
+        Function("mcclGetVersion", ncclResult_t, [ctypes.POINTER(ctypes.c_int)]),
         # ncclResult_t ncclGetUniqueId(ncclUniqueId* uniqueId);
-        Function("ncclGetUniqueId", ncclResult_t, [ctypes.POINTER(ncclUniqueId)]),
+        Function("mcclGetUniqueId", ncclResult_t, [ctypes.POINTER(ncclUniqueId)]),
         # ncclResult_t  ncclCommInitRank(
         #   ncclComm_t* comm, int nranks, ncclUniqueId commId, int rank);
         # note that ncclComm_t is a pointer type, so the first argument
         # is a pointer to a pointer
         Function(
-            "ncclCommInitRank",
+            "mcclCommInitRank",
             ncclResult_t,
             [ctypes.POINTER(ncclComm_t), ctypes.c_int, ncclUniqueId, ctypes.c_int],
         ),
@@ -153,7 +153,7 @@ class NCCLLibrary:
         # note that cudaStream_t is a pointer type, so the last argument
         # is a pointer
         Function(
-            "ncclAllReduce",
+            "mcclAllReduce",
             ncclResult_t,
             [
                 buffer_type,
@@ -172,7 +172,7 @@ class NCCLLibrary:
         # note that cudaStream_t is a pointer type, so the last argument
         # is a pointer
         Function(
-            "ncclAllGather",
+            "mcclAllGather",
             ncclResult_t,
             [
                 buffer_type,
@@ -190,7 +190,7 @@ class NCCLLibrary:
         # note that cudaStream_t is a pointer type, so the last argument
         # is a pointer
         Function(
-            "ncclReduceScatter",
+            "mcclReduceScatter",
             ncclResult_t,
             [
                 buffer_type,
@@ -206,7 +206,7 @@ class NCCLLibrary:
         #   const void* sendbuff, size_t count, ncclDataType_t datatype,
         #   int dest, ncclComm_t comm, cudaStream_t stream);
         Function(
-            "ncclSend",
+            "mcclSend",
             ncclResult_t,
             [
                 buffer_type,
@@ -221,7 +221,7 @@ class NCCLLibrary:
         #   void* recvbuff, size_t count, ncclDataType_t datatype,
         #   int src, ncclComm_t comm, cudaStream_t stream);
         Function(
-            "ncclRecv",
+            "mcclRecv",
             ncclResult_t,
             [
                 buffer_type,
@@ -237,7 +237,7 @@ class NCCLLibrary:
         #   ncclDataType_t datatype, int root, ncclComm_t comm,
         #   cudaStream_t stream);
         Function(
-            "ncclBroadcast",
+            "mcclBroadcast",
             ncclResult_t,
             [
                 buffer_type,
@@ -254,7 +254,7 @@ class NCCLLibrary:
         # because Python object destruction can happen in random order,
         # it is better not to call it at all.
         # ncclResult_t  ncclCommDestroy(ncclComm_t comm);
-        Function("ncclCommDestroy", ncclResult_t, [ncclComm_t]),
+        Function("mcclCommDestroy", ncclResult_t, [ncclComm_t]),
     ]
 
     # class attribute to store the mapping from the path to the library
@@ -298,17 +298,17 @@ class NCCLLibrary:
             NCCLLibrary.path_to_dict_mapping[so_file] = _funcs
         self._funcs = NCCLLibrary.path_to_dict_mapping[so_file]
 
-    def ncclGetErrorString(self, result: ncclResult_t) -> str:
-        return str(self._funcs["ncclGetErrorString"](result).decode("utf-8"))
+    def mcclGetErrorString(self, result: ncclResult_t) -> str:
+        return str(self._funcs["mcclGetErrorString"](result).decode("utf-8"))
 
     def NCCL_CHECK(self, result: ncclResult_t) -> None:
         if result != 0:
-            error_str = self.ncclGetErrorString(result)
-            raise RuntimeError(f"NCCL error: {error_str}")
+            error_str = self.mcclGetErrorString(result)
+            raise RuntimeError(f"MCCL error: {error_str}")
 
     def ncclGetVersion(self) -> str:
         version = ctypes.c_int()
-        self.NCCL_CHECK(self._funcs["ncclGetVersion"](ctypes.byref(version)))
+        self.NCCL_CHECK(self._funcs["mcclGetVersion"](ctypes.byref(version)))
         version_str = str(version.value)
         # something like 21903 --> "2.19.3"
         major = version_str[0].lstrip("0")
@@ -318,7 +318,7 @@ class NCCLLibrary:
 
     def ncclGetUniqueId(self) -> ncclUniqueId:
         unique_id = ncclUniqueId()
-        self.NCCL_CHECK(self._funcs["ncclGetUniqueId"](ctypes.byref(unique_id)))
+        self.NCCL_CHECK(self._funcs["mcclGetUniqueId"](ctypes.byref(unique_id)))
         return unique_id
 
     def ncclCommInitRank(
@@ -326,7 +326,7 @@ class NCCLLibrary:
     ) -> ncclComm_t:
         comm = ncclComm_t()
         self.NCCL_CHECK(
-            self._funcs["ncclCommInitRank"](
+            self._funcs["mcclCommInitRank"](
                 ctypes.byref(comm), world_size, unique_id, rank
             )
         )
@@ -348,7 +348,7 @@ class NCCLLibrary:
         # when we pass int to a function, it will be converted to `ctypes.c_int`
         # by ctypes automatically
         self.NCCL_CHECK(
-            self._funcs["ncclAllReduce"](
+            self._funcs["mcclAllReduce"](
                 sendbuff, recvbuff, count, datatype, op, comm, stream
             )
         )
@@ -369,7 +369,7 @@ class NCCLLibrary:
         # when we pass int to a function, it will be converted to `ctypes.c_int`
         # by ctypes automatically
         self.NCCL_CHECK(
-            self._funcs["ncclReduceScatter"](
+            self._funcs["mcclReduceScatter"](
                 sendbuff, recvbuff, count, datatype, op, comm, stream
             )
         )
@@ -388,7 +388,7 @@ class NCCLLibrary:
         # when we pass int to a function, it will be converted to `ctypes.c_int`
         # by ctypes automatically
         self.NCCL_CHECK(
-            self._funcs["ncclAllGather"](
+            self._funcs["mcclAllGather"](
                 sendbuff, recvbuff, count, datatype, comm, stream
             )
         )
@@ -403,7 +403,7 @@ class NCCLLibrary:
         stream: cudaStream_t,
     ) -> None:
         self.NCCL_CHECK(
-            self._funcs["ncclSend"](sendbuff, count, datatype, dest, comm, stream)
+            self._funcs["mcclSend"](sendbuff, count, datatype, dest, comm, stream)
         )
 
     def ncclRecv(
@@ -416,7 +416,7 @@ class NCCLLibrary:
         stream: cudaStream_t,
     ) -> None:
         self.NCCL_CHECK(
-            self._funcs["ncclRecv"](recvbuff, count, datatype, src, comm, stream)
+            self._funcs["mcclRecv"](recvbuff, count, datatype, src, comm, stream)
         )
 
     def ncclBroadcast(
@@ -430,13 +430,13 @@ class NCCLLibrary:
         stream: cudaStream_t,
     ) -> None:
         self.NCCL_CHECK(
-            self._funcs["ncclBroadcast"](
+            self._funcs["mcclBroadcast"](
                 sendbuff, recvbuff, count, datatype, root, comm, stream
             )
         )
 
     def ncclCommDestroy(self, comm: ncclComm_t) -> None:
-        self.NCCL_CHECK(self._funcs["ncclCommDestroy"](comm))
+        self.NCCL_CHECK(self._funcs["mcclCommDestroy"](comm))
 
 
 __all__ = [

@@ -58,6 +58,14 @@ dependencies = [
   "uvloop",
   "xgrammar",
   "jsonschema",
+  "imageio",
+  "remote_pdb",
+  "yunchang",
+  "imageio[pyav]",
+  "imageio[ffmpeg]",
+  "cloudpickle",
+  "protobuf",
+  "diffusers[torch]==0.35.1",
 
 ]
 
