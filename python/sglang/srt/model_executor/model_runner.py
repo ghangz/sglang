@@ -160,6 +160,7 @@ from sglang.srt.utils import (
     reserve_rope_cache_for_long_sequences,
     set_cuda_arch,
     slow_rank_detector,
+    export_json_on_rank0,  
 )
 from sglang.srt.utils.nvtx_pytorch_hooks import PytHooks
 from sglang.srt.utils.offloader import (
@@ -816,6 +817,16 @@ class ModelRunner(ModelRunnerKVCacheMixin):
         logger.info(
             f"Init torch distributed ends. mem usage={(before_avail_memory - local_gpu_memory):.2f} GB"
         )
+        
+        out_data = self.server_args.__dict__
+        out_data.update(
+            {
+                "torch_distributed": before_avail_memory - local_gpu_memory,
+                "avail_mem": local_gpu_memory
+            }            
+        )
+        export_json_on_rank0(out_data)
+        
         return min_per_gpu_memory
 
     def load_model(self):
@@ -969,6 +980,14 @@ class ModelRunner(ModelRunnerKVCacheMixin):
             f"avail mem={after_avail_memory:.2f} GB, "
             f"mem usage={self.weight_load_mem_usage:.2f} GB."
         )
+        
+        export_json_on_rank0(
+            {
+                f"{self.model_config.model_path}_weight": before_avail_memory - after_avail_memory,
+                "avail_mem": after_avail_memory
+            }
+        )
+        
         if self.server_args.debug_tensor_dump_output_folder is not None:
             register_forward_hook_for_model(
                 self.model,
@@ -2315,7 +2334,11 @@ class ModelRunner(ModelRunnerKVCacheMixin):
             and not forward_batch.is_cuda_capture
             and self.pp_group.is_last_rank
         ):
-            forward_batch.post_forward_mlp_sync_batch(ret)
+            if hasattr(ret, "next_token_logits"):
+                forward_batch.post_forward_mlp_sync_batch(ret)
+            else:
+                logging.debug("Skipping post_forward_mlp_sync_batch because ret has no next_token_logits (PPProxyTensors?).")
+            
 
         return ModelRunnerOutput(logits_output=ret, can_run_graph=can_run_graph)
 

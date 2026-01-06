@@ -1521,7 +1521,7 @@ class DeepseekV2AttentionMLA(nn.Module):
         self.qkv_proj_with_rope_is_fp8 = (
             has_fused_proj
             and not is_packed_weight
-            and self.fused_qkv_a_proj_with_mqa.weight.dtype == torch.float8_e4m3fn
+            and hasattr(self.fused_qkv_a_proj_with_mqa, "weight") and self.fused_qkv_a_proj_with_mqa.weight.dtype == torch.float8_e4m3fn
         )
 
         self.weight_block_size = None
