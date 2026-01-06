@@ -25,6 +25,7 @@ from sglang.srt.utils import (
     is_hip,
 )
 
+from sgl_kernel import cutlass_moe_mm_w8a8
 try:
     from triton.tools.tensor_descriptor import TensorDescriptor
 
@@ -46,7 +47,7 @@ elif _is_hip:
     pass
 
 padding_size = 128 if bool(int(os.getenv("SGLANG_MOE_PADDING", "0"))) else 0
-
+enable_mctlass_fused_moe = (os.getenv("ENABLE_MCTLASS_FUSED_MOE", "1") == "1")
 
 def support_tensor_descriptor():
     return _support_tensor_descriptor
@@ -719,7 +720,16 @@ def invoke_fused_moe_kernel(
             filter_expert=filter_expert,
             **config,
         )
-
+    elif use_int8_w8a8  and enable_mctlass_fused_moe:
+         cutlass_moe_mm_w8a8(A, B, C,
+                            A_scale, B_scale, topk_weights, sorted_token_ids, expert_ids,
+                            num_tokens_post_padded,
+                            B.shape[1], # N
+                            A.shape[1], # K
+                            sorted_token_ids.shape[0],
+                            topk_ids.numel(), # num_valid_tokens
+                            top_k,
+                            mul_routed_weight)
     else:
         if a_use_tma or b_use_tma:
             # TMA descriptors require a global memory allocation

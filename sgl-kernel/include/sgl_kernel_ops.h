@@ -909,6 +909,27 @@ void causal_conv1d_fwd(
     bool silu_activation,
     int64_t pad_slot_id);
 
+int64_t cutlass_moe_mm_gemm_kernel_m_w8a8(int64_t num_valid_tokens,
+                                          int64_t N, 
+                                          int64_t K, 
+                                          int64_t group);
+                                          
+void cutlass_moe_mm_w8a8(at::Tensor const& a, 
+                         at::Tensor const& b, 
+                         at::Tensor& c,
+                         at::Tensor const& a_scales, 
+                         at::Tensor const& b_scales, 
+                         at::Tensor const& moe_weight,
+                         at::Tensor const& token_ids, 
+                         at::Tensor const& expert_ids,
+                         at::Tensor const& num_tokens_post_padded,
+                         int64_t N, 
+                         int64_t K, 
+                         int64_t EM, 
+                         int64_t num_valid_tokens, 
+                         int64_t topk, 
+                         bool mul_routed_weight);
+                             
 // /*
 //  * From csrc/expert_specialization
 //  */

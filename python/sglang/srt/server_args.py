@@ -2009,7 +2009,7 @@ class ServerArgs:
                 )
 
             if self.max_running_requests is None:
-                self.max_running_requests = 48
+                self.max_running_requests = 128
                 logger.warning(
                     "Max running requests is reset to 128 for speculative decoding. You can override this by explicitly setting --max-running-requests."
                 )

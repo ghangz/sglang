@@ -250,6 +250,29 @@ def apply_shuffle_mul_sum(
         input, output, permutation, factors
     )
 
+def cutlass_moe_mm_gemm_kernel_m_w8a8(num_valid_tokens: int, N: int, K: int, group: int) -> int:
+    return torch.ops.sgl_kernel.cutlass_moe_mm_gemm_kernel_m_w8a8.default(num_valid_tokens, N, K, group)
+
+def cutlass_moe_mm_w8a8(a: torch.Tensor,
+                        b: torch.Tensor,
+                        c: torch.Tensor,
+                        a_scales: torch.Tensor,
+                        b_scales: torch.Tensor,
+                        moe_weight: torch.Tensor,
+                        token_ids:  torch.Tensor,
+                        expert_ids: torch.Tensor,
+                        num_tokens_post_padded: torch.Tensor,
+                        N: int,
+                        K: int,
+                        EM: int,
+                        num_valid_tokens: int,
+                        topk: int,
+                        mul_routed_weight: bool
+                        ) -> torch.Tensor:
+
+    return torch.ops.sgl_kernel.cutlass_moe_mm_w8a8.default(a, b, c, a_scales, b_scales,
+                        moe_weight, token_ids, expert_ids, num_tokens_post_padded,
+                        N, K, EM, num_valid_tokens, topk, mul_routed_weight)
 
 def fused_qk_norm_rope(
     qkv: torch.Tensor,
