@@ -58,9 +58,10 @@ if _is_cuda or _is_xpu:
             _flashinfer_layernorm_available = False
     else:
         _flashinfer_layernorm_available = False
-
-    from sgl_kernel import (
-        fused_add_rmsnorm,
+        
+    import flashinfer
+    from sgl_kernel import fused_add_rmsnorm
+    from flashinfer import (
         gemma_fused_add_rmsnorm,
         gemma_rmsnorm,
         rmsnorm,

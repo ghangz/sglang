@@ -69,16 +69,16 @@ from sglang.srt.utils import (
 )
 from sglang.srt.utils.common import direct_register_custom_op
 
-if is_flashinfer_available():
-    from flashinfer import fp4_quantize
+# if is_flashinfer_available():
+#     from flashinfer import fp4_quantize
 
 # Try to import FP4 TRTLLM function if flashinfer is available
 trtllm_fp4_block_scale_moe = None
-if get_moe_runner_backend().is_flashinfer_trtllm():
-    try:
-        from flashinfer.fused_moe import trtllm_fp4_block_scale_moe
-    except ImportError:
-        trtllm_fp4_block_scale_moe = None
+# if get_moe_runner_backend().is_flashinfer_trtllm():
+#     try:
+#         from flashinfer.fused_moe import trtllm_fp4_block_scale_moe
+#     except ImportError:
+#         trtllm_fp4_block_scale_moe = None
 
 _is_hip = is_hip()
 _is_cpu_amx_available = cpu_has_amx_support()
@@ -1187,22 +1187,23 @@ class FlashInferFP4MoE(FusedMoE):
 
         # flashinfer.fp4_quantize returns (packed_uint8, scale_fp8)
         # Only the block scales are computed at runtime
-        hs_fp4_bytes, hs_sf_bytes = fp4_quantize(
-            hidden_states,
-            self.w13_input_scale_quant,
-            16,  # sf_vec_size
-            False,  # use_ue8m0
-            False,  # is_sf_swizzled_layout
-        )
+        # hs_fp4_bytes, hs_sf_bytes = fp4_quantize(
+        #     hidden_states,
+        #     self.w13_input_scale_quant,
+        #     16,  # sf_vec_size
+        #     False,  # use_ue8m0
+        #     False,  # is_sf_swizzled_layout
+        # )
 
-        seq_len, hidden_size = hidden_states.shape
-        hs_fp4 = hs_fp4_bytes.reshape(seq_len, hidden_size // 2)
-        # TRT-LLM expects hidden state scales shaped as [seq_len, hidden_size // 16]
-        hs_sf = hs_sf_bytes.view(torch.float8_e4m3fn).reshape(
-            seq_len, hidden_size // 16
-        )
+        # seq_len, hidden_size = hidden_states.shape
+        # hs_fp4 = hs_fp4_bytes.reshape(seq_len, hidden_size // 2)
+        # # TRT-LLM expects hidden state scales shaped as [seq_len, hidden_size // 16]
+        # hs_sf = hs_sf_bytes.view(torch.float8_e4m3fn).reshape(
+        #     seq_len, hidden_size // 16
+        # )
 
-        return hs_fp4, hs_sf
+        # return hs_fp4, hs_sf
+        return None, None
 
     def forward(self, hidden_states: torch.Tensor, topk_output: TopKOutput):
         assert TopKOutputChecker.format_is_bypassed(
@@ -1272,49 +1273,49 @@ class FlashInferFP4MoE(FusedMoE):
                 num_tokens, hidden_size, dtype=torch.bfloat16, device=hs_fp4.device
             )
 
-        result = trtllm_fp4_block_scale_moe(
-            routing_logits=router_logits,
-            routing_bias=correction_bias,
-            hidden_states=hs_fp4,
-            hidden_states_scale=hs_scale_linear.view(torch.float8_e4m3fn).flatten(),
-            gemm1_weights=self.gemm1_weights_fp4_shuffled.data,
-            gemm1_weights_scale=self.gemm1_scales_fp4_shuffled.data.view(
-                torch.float8_e4m3fn
-            ),
-            gemm1_bias=None,
-            gemm1_alpha=None,
-            gemm1_beta=None,
-            gemm1_clamp_limit=None,
-            gemm2_weights=self.gemm2_weights_fp4_shuffled.data,
-            gemm2_weights_scale=self.gemm2_scales_fp4_shuffled.data.view(
-                torch.float8_e4m3fn
-            ),
-            gemm2_bias=None,
-            output1_scale_scalar=self.g1_scale_c.data,
-            output1_scale_gate_scalar=self.g1_alphas.data,
-            output2_scale_scalar=self.g2_alphas.data,
-            num_experts=self.num_experts,
-            top_k=topk_config.top_k,
-            n_group=topk_config.num_expert_group,
-            topk_group=topk_config.topk_group,
-            intermediate_size=self.intermediate_size_per_partition,
-            local_expert_offset=self.moe_ep_rank * self.num_local_experts,
-            local_num_experts=self.num_local_experts,
-            routed_scaling_factor=self.moe_runner_config.routed_scaling_factor,
-            tile_tokens_dim=None,
-            # Respect the routing method configured for this layer (e.g., Renormalize for Qwen3),
-            # instead of always assuming DeepSeekV3.
-            routing_method_type=(
-                self.routing_method_type
-                if self.routing_method_type is not None
-                else RoutingMethodType.Default
-            ),
-            do_finalize=True,
-            tune_max_num_tokens=next_power_of_2(hs_fp4.shape[0]),
-            output=symm_output,
-        )[0]
+        # result = trtllm_fp4_block_scale_moe(
+        #     routing_logits=router_logits,
+        #     routing_bias=correction_bias,
+        #     hidden_states=hs_fp4,
+        #     hidden_states_scale=hs_scale_linear.view(torch.float8_e4m3fn).flatten(),
+        #     gemm1_weights=self.gemm1_weights_fp4_shuffled.data,
+        #     gemm1_weights_scale=self.gemm1_scales_fp4_shuffled.data.view(
+        #         torch.float8_e4m3fn
+        #     ),
+        #     gemm1_bias=None,
+        #     gemm1_alpha=None,
+        #     gemm1_beta=None,
+        #     gemm1_clamp_limit=None,
+        #     gemm2_weights=self.gemm2_weights_fp4_shuffled.data,
+        #     gemm2_weights_scale=self.gemm2_scales_fp4_shuffled.data.view(
+        #         torch.float8_e4m3fn
+        #     ),
+        #     gemm2_bias=None,
+        #     output1_scale_scalar=self.g1_scale_c.data,
+        #     output1_scale_gate_scalar=self.g1_alphas.data,
+        #     output2_scale_scalar=self.g2_alphas.data,
+        #     num_experts=self.num_experts,
+        #     top_k=topk_config.top_k,
+        #     n_group=topk_config.num_expert_group,
+        #     topk_group=topk_config.topk_group,
+        #     intermediate_size=self.intermediate_size_per_partition,
+        #     local_expert_offset=self.moe_ep_rank * self.num_local_experts,
+        #     local_num_experts=self.num_local_experts,
+        #     routed_scaling_factor=self.moe_runner_config.routed_scaling_factor,
+        #     tile_tokens_dim=None,
+        #     # Respect the routing method configured for this layer (e.g., Renormalize for Qwen3),
+        #     # instead of always assuming DeepSeekV3.
+        #     routing_method_type=(
+        #         self.routing_method_type
+        #         if self.routing_method_type is not None
+        #         else RoutingMethodType.Default
+        #     ),
+        #     do_finalize=True,
+        #     tune_max_num_tokens=next_power_of_2(hs_fp4.shape[0]),
+        #     output=symm_output,
+        # )[0]
 
-        return result
+        return None
 
 
 def moe_forward_piecewise_cuda_graph_impl(

@@ -7,17 +7,17 @@ import torch
 
 from sglang.srt.layers.quantization.marlin_utils import (
     USE_FP32_REDUCE_DEFAULT,
-    marlin_make_workspace,
-    marlin_permute_bias,
-    marlin_permute_scales,
+    # marlin_make_workspace,
+    # marlin_permute_bias,
+    # marlin_permute_scales,
     should_use_atomic_add_reduce,
 )
 from sglang.srt.layers.quantization.utils import get_scalar_types
 from sglang.srt.utils import is_cuda
 
 _is_cuda = is_cuda()
-if _is_cuda:
-    from sgl_kernel import gptq_marlin_gemm, gptq_marlin_repack
+# if _is_cuda:
+#     from sgl_kernel import gptq_marlin_gemm, gptq_marlin_repack
 
 ScalarType, scalar_types = get_scalar_types()
 
@@ -58,24 +58,25 @@ def apply_fp8_marlin_linear(
         m=reshaped_x.size(0), n=size_n, k=size_k, device=input.device, dtype=input.dtype
     )
 
-    output = gptq_marlin_gemm(
-        a=reshaped_x,
-        c=None,
-        b_q_weight=weight,
-        b_scales=weight_scale,
-        global_scale=None,
-        b_zeros=None,
-        g_idx=None,
-        perm=None,
-        workspace=workspace,
-        b_q_type=scalar_types.float8_e4m3fn,
-        size_m=reshaped_x.size(0),
-        size_n=size_n,
-        size_k=size_k,
-        use_atomic_add=use_atomic_add,
-        use_fp32_reduce=use_fp32_reduce,
-    )
+    # output = gptq_marlin_gemm(
+    #     a=reshaped_x,
+    #     c=None,
+    #     b_q_weight=weight,
+    #     b_scales=weight_scale,
+    #     global_scale=None,
+    #     b_zeros=None,
+    #     g_idx=None,
+    #     perm=None,
+    #     workspace=workspace,
+    #     b_q_type=scalar_types.float8_e4m3fn,
+    #     size_m=reshaped_x.size(0),
+    #     size_n=size_n,
+    #     size_k=size_k,
+    #     use_atomic_add=use_atomic_add,
+    #     use_fp32_reduce=use_fp32_reduce,
+    # )
 
+    output = torch.empty(0, dtype=torch.int, device=input.device)
     if bias is not None:
         output.add_(bias)
 
@@ -104,7 +105,7 @@ def prepare_fp8_layer_for_marlin(
     device = layer.weight.device
 
     # WORKSPACE
-    layer.workspace = marlin_make_workspace(device)
+    # layer.workspace = marlin_make_workspace(device)
 
     # WEIGHT
     # Repack weights to marlin format
@@ -113,13 +114,15 @@ def prepare_fp8_layer_for_marlin(
     if not size_k_first:
         qweight = qweight.T.contiguous()
 
-    marlin_qweight = gptq_marlin_repack(
-        b_q_weight=qweight,
-        perm=perm,
-        size_k=part_size_k,
-        size_n=part_size_n,
-        num_bits=8,
-    )
+    # marlin_qweight = gptq_marlin_repack(
+    #     b_q_weight=qweight,
+    #     perm=perm,
+    #     size_k=part_size_k,
+    #     size_n=part_size_n,
+    #     num_bits=8,
+    # )
+    
+    marlin_qweight=None
     layer.weight = torch.nn.Parameter(marlin_qweight, requires_grad=False)
 
     # WEIGHT SCALES
@@ -162,15 +165,16 @@ def prepare_fp8_layer_for_marlin(
         # size_n may not divisible by block_size[0]
         scales = scales[:, :part_size_n]
 
-    marlin_scales = marlin_permute_scales(
-        s=scales, size_k=part_size_k, size_n=part_size_n, group_size=group_size
-    )
+    # marlin_scales = marlin_permute_scales(
+    #     s=scales, size_k=part_size_k, size_n=part_size_n, group_size=group_size
+    # )
+    marlin_scales=None
     marlin_scales = fp8_fused_exponent_bias_into_scales(marlin_scales)
     layer.weight_scale = torch.nn.Parameter(marlin_scales, requires_grad=False)
 
     if hasattr(layer, "bias") and layer.bias is not None:
         assert layer.bias.shape == (part_size_n,)
-        bias = marlin_permute_bias(layer.bias)
+        bias = None
         layer.bias = torch.nn.Parameter(bias, requires_grad=False)
 
 
@@ -191,7 +195,7 @@ def prepare_moe_fp8_layer_for_marlin(
 
     # WORKSPACE
     device = layer.w13_weight.device
-    layer.workspace = marlin_make_workspace(device, 4)
+    # layer.workspace = marlin_make_workspace(device, 4)
     perm = torch.empty(0, dtype=torch.int, device=device)
 
     # WEIGHT
@@ -214,10 +218,10 @@ def prepare_moe_fp8_layer_for_marlin(
             if not size_k_first:
                 qweight = qweight.T.contiguous()
 
-            marlin_qweight = gptq_marlin_repack(
-                b_q_weight=qweight, perm=perm, size_k=size_k, size_n=size_n, num_bits=8
-            )
-            tensor_list.append(marlin_qweight)
+            # marlin_qweight = gptq_marlin_repack(
+            #     b_q_weight=qweight, perm=perm, size_k=size_k, size_n=size_n, num_bits=8
+            # )
+            # tensor_list.append(marlin_qweight)
 
         weight = torch.cat([x.unsqueeze(0) for x in tensor_list], 0)
         weight = torch.nn.Parameter(weight, requires_grad=False)
@@ -274,11 +278,11 @@ def prepare_moe_fp8_layer_for_marlin(
             # size_n may not divisible by block_size[0]
             scales = scales[..., :size_n].contiguous()
 
-        for i in range(e):
-            marlin_scales = marlin_permute_scales(
-                s=scales[i], size_k=size_k, size_n=size_n, group_size=group_size
-            )
-            tensor_list.append(marlin_scales)
+        # for i in range(e):
+        #     marlin_scales = marlin_permute_scales(
+        #         s=scales[i], size_k=size_k, size_n=size_n, group_size=group_size
+        #     )
+        #     tensor_list.append(marlin_scales)
 
         scales = torch.cat([x.unsqueeze(0) for x in tensor_list], 0)
         scales = fp8_fused_exponent_bias_into_scales(scales)
@@ -297,7 +301,7 @@ def prepare_moe_fp8_layer_for_marlin(
         for i in range(e):
             expert_bias = bias[i]
 
-            tensor_list.append(marlin_permute_bias(expert_bias))
+            # tensor_list.append(marlin_permute_bias(expert_bias))
 
         bias = torch.cat([x.unsqueeze(0) for x in tensor_list], 0)
         bias = torch.nn.Parameter(bias, requires_grad=False)
@@ -337,18 +341,18 @@ def marlin_quant_fp8_torch(weight, group_size):
         weight_ref = fp8_weight.to(weight.dtype) * repeated_scales
 
     packed_weight = pack_fp8_to_int32(fp8_weight, False).T.contiguous()
-    marlin_qweight = gptq_marlin_repack(
-        b_q_weight=packed_weight,
-        perm=torch.empty(0, dtype=torch.int, device=device),
-        size_k=size_k,
-        size_n=size_n,
-        num_bits=8,
-    )
-
-    marlin_scales = marlin_permute_scales(
-        s=scales.T, size_k=size_k, size_n=size_n, group_size=group_size
-    )
-
+    # marlin_qweight = gptq_marlin_repack(
+    #     b_q_weight=packed_weight,
+    #     perm=torch.empty(0, dtype=torch.int, device=device),
+    #     size_k=size_k,
+    #     size_n=size_n,
+    #     num_bits=8,
+    # )
+    marlin_qweight=None
+    # marlin_scales = marlin_permute_scales(
+    #     s=scales.T, size_k=size_k, size_n=size_n, group_size=group_size
+    # )
+    marlin_scales=None
     marlin_scales = fp8_fused_exponent_bias_into_scales(marlin_scales)
 
     return weight_ref.T, marlin_qweight, marlin_scales

@@ -431,6 +431,14 @@ class CompressedTensorsConfig(QuantizationConfig):
             and is_symmetric
         )
 
+    def _is_dynamic_token_int8_w8a8(self, weight_quant: BaseModel, input_quant: BaseModel) -> bool:
+        # Confirm weights and activations quantized.
+        if weight_quant is None or input_quant is None:
+            return False
+
+        is_int8_w8a8 = (weight_quant.type == QuantizationType.INT and input_quant.type == QuantizationType.INT)
+        return is_int8_w8a8 and self._is_dynamic_token_w8a8(weight_quant, input_quant)
+    
     def _is_wNa16_group_channel(
         self, weight_quant: BaseModel, input_quant: BaseModel
     ) -> bool:

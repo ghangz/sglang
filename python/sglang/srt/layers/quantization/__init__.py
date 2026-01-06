@@ -26,13 +26,13 @@ from sglang.srt.layers.quantization.compressed_tensors.compressed_tensors import
 from sglang.srt.layers.quantization.fp8 import Fp8Config
 from sglang.srt.layers.quantization.fpgemm_fp8 import FBGEMMFp8Config
 from sglang.srt.layers.quantization.gguf import GGUFConfig
-from sglang.srt.layers.quantization.gptq import GPTQConfig, GPTQMarlinConfig
+# from sglang.srt.layers.quantization.gptq import GPTQConfig, GPTQMarlinConfig
 from sglang.srt.layers.quantization.modelopt_quant import (
     ModelOptFp4Config,
     ModelOptFp8Config,
 )
 from sglang.srt.layers.quantization.moe_wna16 import MoeWNA16Config
-from sglang.srt.layers.quantization.mxfp4 import Mxfp4Config
+# from sglang.srt.layers.quantization.mxfp4 import Mxfp4Config
 from sglang.srt.layers.quantization.petit import PetitNvFp4Config
 from sglang.srt.layers.quantization.qoq import QoQConfig
 from sglang.srt.layers.quantization.quark.quark import QuarkConfig
@@ -58,8 +58,8 @@ BASE_QUANTIZATION_METHODS: Dict[str, Type[QuantizationConfig]] = {
     "awq": AWQConfig,
     "awq_marlin": AWQMarlinConfig,
     "gguf": GGUFConfig,
-    "gptq": GPTQConfig,
-    "gptq_marlin": GPTQMarlinConfig,
+    # "gptq": GPTQConfig,
+    # "gptq_marlin": GPTQMarlinConfig,
     "moe_wna16": MoeWNA16Config,
     "compressed-tensors": CompressedTensorsConfig,
     "qoq": QoQConfig,
@@ -71,12 +71,12 @@ BASE_QUANTIZATION_METHODS: Dict[str, Type[QuantizationConfig]] = {
 }
 
 
-if is_cuda() or (_is_mxfp_supported and is_hip()):
-    BASE_QUANTIZATION_METHODS.update(
-        {
-            "mxfp4": Mxfp4Config,
-        }
-    )
+# if is_cuda() or (_is_mxfp_supported and is_hip()):
+#     BASE_QUANTIZATION_METHODS.update(
+#         {
+#             "mxfp4": Mxfp4Config,
+#         }
+#     )
 
 if is_npu():
     from sglang.srt.hardware_backend.npu.quantization.modelslim import ModelSlimConfig

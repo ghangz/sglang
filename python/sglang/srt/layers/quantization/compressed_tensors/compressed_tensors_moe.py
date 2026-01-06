@@ -111,6 +111,8 @@ class CompressedTensorsMoEMethod(FusedMoEMethodBase):
         elif quant_config._is_fp8_w8a8(weight_quant, input_quant):
             logger.info_once("Using CompressedTensorsW8A8Fp8MoEMethod")
             return CompressedTensorsW8A8Fp8MoEMethod(quant_config)
+        elif quant_config._is_dynamic_token_int8_w8a8(weight_quant, input_quant):
+            return CompressedTensorsW8A8Int8MoEMethod(quant_config)
         else:
             raise RuntimeError(
                 f"Unsupported FusedMoe scheme: {weight_quant}, {input_quant}"
@@ -1159,3 +1161,223 @@ class CompressedTensorsWNA16MoEMethod(CompressedTensorsMoEMethod):
             routed_scaling_factor=self.moe_runner_config.routed_scaling_factor,
         )
         return StandardCombineInput(hidden_states=output)
+
+class CompressedTensorsW8A8Int8MoEMethod(CompressedTensorsMoEMethod):
+    def __init__(
+        self,
+        quant_config: "CompressedTensorsConfig"  # type: ignore # noqa E501
+    ):
+        self.quant_config = quant_config
+        self.weight_quant = self.quant_config.target_scheme_map["Linear"].get(
+                "weights")
+        self.input_quant = self.quant_config.target_scheme_map["Linear"].get(
+            "input_activations")
+
+        if not (self.weight_quant.strategy == QuantizationStrategy.CHANNEL
+                and self.input_quant.strategy == QuantizationStrategy.TOKEN):
+            raise ValueError(
+                "For INT8 Fused MoE layers, only per-channel scales"
+                "for activations and per-token scales for activations are supported. Found "
+                f"{self.weight_quant}, {self.input_quant}")
+
+        self.static_input_scales = not self.input_quant.dynamic
+
+    def create_weights(self, layer: torch.nn.Module, num_experts: int,
+                       hidden_size: int, intermediate_size_per_partition: int,
+                       params_dtype: torch.dtype, **extra_weight_attrs):
+        from sglang.srt.layers.moe.fused_moe_triton import FusedMoeWeightScaleSupported
+
+        params_dtype = torch.int8
+
+        # Weights
+        w13_weight = torch.nn.Parameter(torch.empty(num_experts,
+                                                    2 * intermediate_size_per_partition,
+                                                    hidden_size,
+                                                    dtype=params_dtype),
+                                        requires_grad=False)
+
+        layer.register_parameter("w13_weight", w13_weight)
+        set_weight_attrs(w13_weight, extra_weight_attrs)
+
+        w2_weight = torch.nn.Parameter(torch.empty(num_experts,
+                                                   hidden_size,
+                                                   intermediate_size_per_partition,
+                                                   dtype=params_dtype),
+                                                    requires_grad=False)
+        layer.register_parameter("w2_weight", w2_weight)
+        set_weight_attrs(w2_weight, extra_weight_attrs)
+
+        w13_weight_scale = torch.nn.Parameter(torch.ones(num_experts,
+                                                         2 * intermediate_size_per_partition,
+                                                         1,
+                                                         dtype=torch.float32),
+                                                         requires_grad=False)
+        layer.register_parameter("w13_weight_scale", w13_weight_scale)
+
+        w2_weight_scale = torch.nn.Parameter(torch.ones(num_experts,
+                                                        hidden_size,
+                                                        1,
+                                                        dtype=torch.float32),
+                                                        requires_grad=False)
+        layer.register_parameter("w2_weight_scale", w2_weight_scale)
+
+        extra_weight_attrs.update({"quant_method": FusedMoeWeightScaleSupported.CHANNEL.value})
+        set_weight_attrs(w13_weight_scale, extra_weight_attrs)
+        set_weight_attrs(w2_weight_scale, extra_weight_attrs)
+
+        # Input_Scales
+        if self.static_input_scales:
+            raise ValueError(
+                "For INT8 Fused MoE layers, only dynamic scales"
+                "for activations are supported. Found "
+                f"{self.input_quant}")
+        else:
+            layer.w13_input_scale = None
+            layer.w2_input_scale = None
+    
+
+    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+        # Note: Has been done in FusedMoE weight loader, do nothing here
+        pass
+
+    def create_moe_runner(
+        self, layer: torch.nn.Module, moe_runner_config: MoeRunnerConfig
+    ):
+        self.moe_runner_config = moe_runner_config
+        self.runner = MoeRunner(MoeRunnerBackend.TRITON, moe_runner_config)
+        
+    def apply(
+        self,
+        layer: torch.nn.Module,
+        x: torch.Tensor,
+        # router_logits: torch.Tensor,
+        # top_k: int,
+        # renormalize: bool,
+        # use_grouped_topk: bool = False,
+        # topk_group: Optional[int] = None,
+        # num_expert_group: Optional[int] = None,
+        # num_fused_shared_experts: int = 0,
+        # custom_routing_function: Optional[Callable] = None,
+        # scoring_func: str = "softmax",
+        # correction_bias: Optional[torch.Tensor] = None,
+        # activation: str = "silu",
+        # apply_router_weight_on_input: bool = False,
+        # inplace: bool = True,
+        # no_combine: bool = False,
+        # routed_scaling_factor: Optional[float] = None,
+        topk_output: TopKOutput,
+        moe_runner_config: MoeRunnerConfig,
+    ) -> torch.Tensor:
+        from sglang.srt.layers.moe.fused_moe_triton import fused_experts
+        # from sglang.srt.layers.moe.topk import select_experts
+
+        # topk_weights, topk_ids = select_experts(
+        #     hidden_states=x,
+        #     router_logits=router_logits,
+        #     use_grouped_topk=use_grouped_topk,
+        #     top_k=top_k,
+        #     renormalize=renormalize,
+        #     topk_group=topk_group,
+        #     num_expert_group=num_expert_group,
+        #     num_fused_shared_experts=num_fused_shared_experts,
+        #     custom_routing_function=custom_routing_function,
+        #     correction_bias=correction_bias,
+        #     routed_scaling_factor=routed_scaling_factor,
+        # )
+
+        return fused_experts(
+            x,
+            layer.w13_weight,
+            layer.w2_weight,
+            topk_output=topk_output,
+            moe_runner_config=moe_runner_config,
+            use_int8_w8a8=True,
+            per_channel_quant=True,
+            w1_scale=layer.w13_weight_scale,
+            w2_scale=layer.w2_weight_scale,
+            a1_scale=layer.w13_input_scale,
+            a2_scale=layer.w2_input_scale,
+        )
+
+class CompressedTensorsW8A8Int8EPMoEMethod(CompressedTensorsW8A8Int8MoEMethod):
+    def __init__(self, quant_config: "CompressedTensorsConfig"):
+        super().__init__(quant_config)
+
+    def create_weights(
+        self,
+        layer: torch.nn.Module,
+        num_experts_per_partition: int,
+        hidden_size: int,
+        intermediate_size: int,
+        params_dtype: torch.dtype,
+        **extra_weight_attrs,
+    ):
+        from sglang.srt.layers.moe.fused_moe_triton import FusedMoeWeightScaleSupported
+        params_dtype = torch.int8
+
+        # Weights
+        w13_weight = torch.nn.Parameter(torch.empty(num_experts_per_partition,
+                                                    2 * intermediate_size,
+                                                    hidden_size,
+                                                    dtype=params_dtype),
+                                        requires_grad=False)
+
+        layer.register_parameter("w13_weight", w13_weight)
+        set_weight_attrs(w13_weight, extra_weight_attrs)
+
+        w2_weight = torch.nn.Parameter(torch.empty(num_experts_per_partition,
+                                                   hidden_size,
+                                                   intermediate_size,
+                                                   dtype=params_dtype),
+                                                    requires_grad=False)
+        layer.register_parameter("w2_weight", w2_weight)
+        set_weight_attrs(w2_weight, extra_weight_attrs)
+
+        w13_weight_scale = torch.nn.Parameter(torch.ones(num_experts_per_partition,
+                                                         2 * intermediate_size,
+                                                         1,
+                                                         dtype=torch.float32),
+                                                         requires_grad=False)
+        layer.register_parameter("w13_weight_scale", w13_weight_scale)
+
+        w2_weight_scale = torch.nn.Parameter(torch.ones(num_experts_per_partition,
+                                                        hidden_size,
+                                                        1,
+                                                        dtype=torch.float32),
+                                                        requires_grad=False)
+        layer.register_parameter("w2_weight_scale", w2_weight_scale)
+
+        extra_weight_attrs.update({"quant_method": FusedMoeWeightScaleSupported.CHANNEL.value})
+        set_weight_attrs(w13_weight_scale, extra_weight_attrs)
+        set_weight_attrs(w2_weight_scale, extra_weight_attrs)
+
+        # Input scales
+        if self.static_input_scales:
+            raise ValueError(
+                "For int8 EPMoE layers, only dynamic scales"
+                "for activations are supported. Found "
+                f"{self.input_quant}")
+        else:
+            layer.w13_input_scale = None
+            layer.w2_input_scale = None
+
+    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+        # Note: Has been done in EPMoE weight loader, do nothing here
+        pass
+
+    def apply(
+        self,
+        layer: torch.nn.Module,
+        x: torch.Tensor,
+        # router_logits: torch.Tensor,
+        # top_k: int,
+        # renormalize: bool,
+        # use_grouped_topk: bool,
+        # topk_group: Optional[int] = None,
+        # num_expert_group: Optional[int] = None,
+        # custom_routing_function: Optional[Callable] = None,
+        topk_output: TopKOutput,
+        moe_runner_config: MoeRunnerConfig,
+    ) -> torch.Tensor:
+        # Never invoke
+        raise NotImplementedError

@@ -41,8 +41,14 @@ from sglang.srt.model_executor.forward_batch_info import ForwardBatch
 from sglang.srt.model_loader.weight_utils import default_weight_loader
 from sglang.srt.utils import add_prefix, is_cuda
 
+# if is_cuda_available():
+#     from sgl_kernel import bmm_fp8
+
 if is_cuda():
-    from sgl_kernel import bmm_fp8
+    try:
+        from sgl_kernel import bmm_fp8
+    except:
+        bmm_fp8 = None
 
 
 class MiniCPM3MLP(nn.Module):

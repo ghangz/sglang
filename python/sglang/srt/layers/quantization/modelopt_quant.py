@@ -78,10 +78,10 @@ try:
 
     enable_flashinfer_fp4_gemm = True
 except ImportError:
-    if is_cuda():
-        from sgl_kernel import cutlass_scaled_fp4_mm as fp4_gemm
-    else:
-        fp4_gemm = None
+    # if is_cuda():
+    #     from sgl_kernel import cutlass_scaled_fp4_mm as fp4_gemm
+    # else:
+    #     fp4_gemm = None
     enable_flashinfer_fp4_gemm = False
     reorder_rows_for_gated_act_gemm = None
     shuffle_matrix_a = None
@@ -1211,33 +1211,34 @@ class ModelOptFp4LinearMethod(LinearMethodBase):
         w_n, _ = layer.weight.shape
         output_shape = [x_m, w_n]
 
-        # Quantize BF16 or FP16 to (FP4 and interleaved block scale)
-        x_fp4, x_scale_interleaved = fp4_quantize(x, layer.input_scale_inv)
+        # # Quantize BF16 or FP16 to (FP4 and interleaved block scale)
+        # x_fp4, x_scale_interleaved = fp4_quantize(x, layer.input_scale_inv)
 
-        assert x_fp4.dtype == torch.uint8
-        assert layer.weight.dtype == torch.uint8
-        assert layer.weight_scale_interleaved.dtype == torch.float8_e4m3fn
-        assert layer.alpha.dtype == torch.float32
+        # assert x_fp4.dtype == torch.uint8
+        # assert layer.weight.dtype == torch.uint8
+        # assert layer.weight_scale_interleaved.dtype == torch.float8_e4m3fn
+        # assert layer.alpha.dtype == torch.float32
 
-        w = layer.weight
-        w_scale_interleaved = layer.weight_scale_interleaved
-        if enable_flashinfer_fp4_gemm:
-            w = layer.weight.T
-            w_scale_interleaved = layer.weight_scale_interleaved.T
-        # TODO(shuw@nvidia.com)
-        # Remove the default after flashinfer bumped to 0.5.1
-        backend = (
-            FLASHINFER_FP4_GEMM_BACKEND if FLASHINFER_FP4_GEMM_BACKEND else "cutlass"
-        )
-        out = torch.ops.sglang.fp4_gemm(
-            x_fp4,
-            w,
-            x_scale_interleaved,
-            w_scale_interleaved,
-            layer.alpha,
-            output_dtype,
-            w_n,
-        )
+        # w = layer.weight
+        # w_scale_interleaved = layer.weight_scale_interleaved
+        # if enable_flashinfer_fp4_gemm:
+        #     w = layer.weight.T
+        #     w_scale_interleaved = layer.weight_scale_interleaved.T
+        # # TODO(shuw@nvidia.com)
+        # # Remove the default after flashinfer bumped to 0.5.1
+        # backend = (
+        #     FLASHINFER_FP4_GEMM_BACKEND if FLASHINFER_FP4_GEMM_BACKEND else "cutlass"
+        # )
+        # out = torch.ops.sglang.fp4_gemm(
+        #     x_fp4,
+        #     w,
+        #     x_scale_interleaved,
+        #     w_scale_interleaved,
+        #     layer.alpha,
+        #     output_dtype,
+        #     w_n,
+        # )
+        out=None
         if bias is not None:
             out = out + bias
         return out.view(*output_shape)

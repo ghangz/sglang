@@ -160,6 +160,9 @@ from sglang.srt.utils import (
     use_intel_amx_backend,
 )
 
+from sgl_kernel import cutlass_scaled_batch_mm
+from sgl_kernel import scaled_int8_quant
+
 _is_hip = is_hip()
 _is_cuda = is_cuda()
 _is_npu = is_npu()
@@ -197,12 +200,16 @@ if _use_aiter_gfx95:
 if _is_cuda:
     from sgl_kernel import (
         awq_dequantize,
-        bmm_fp8,
+        # bmm_fp8,
         concat_mla_k,
-        dsv3_fused_a_gemm,
-        dsv3_router_gemm,
+        # dsv3_fused_a_gemm,
+        # dsv3_router_gemm,
         merge_state_v2,
     )
+    try:
+        from sgl_kernel import bmm_fp8
+    except:
+        bmm_fp8 = None
 elif _is_cpu and _is_cpu_amx_available:
     pass
 elif _is_hip:
@@ -584,24 +591,24 @@ class MoEGate(nn.Module):
             logits = F.linear(hidden_states, self.weight, None)
         else:
             # NOTE: For some unknown reason, router_gemm seems degrade accept length.
-            if (
-                _is_cuda
-                and hidden_states.shape[0] <= 16
-                and hidden_states.shape[1] == 7168
-                and (self.weight.shape[0] == 256 or self.weight.shape[0] == 384)
-                and _device_sm >= 90
-            ):
+            # if (
+            #     _is_cuda
+            #     and hidden_states.shape[0] <= 16
+            #     and hidden_states.shape[1] == 7168
+            #     and (self.weight.shape[0] == 256 or self.weight.shape[0] == 384)
+            #     and _device_sm >= 90
+            # ):
 
-                # router gemm output float32
-                logits = dsv3_router_gemm(
-                    hidden_states, self.weight, out_dtype=torch.float32
-                )
-            elif _use_aiter_gfx95 and hidden_states.shape[0] <= 256:
-                logits = aiter_dsv3_router_gemm(
-                    hidden_states, self.weight, gemm_output_zero_allocator
-                )
-            else:
-                logits = F.linear(hidden_states, self.weight, None)
+            #     # router gemm output float32
+            #     logits = dsv3_router_gemm(
+            #         hidden_states, self.weight, out_dtype=torch.float32
+            #     )
+            # elif _use_aiter_gfx95 and hidden_states.shape[0] <= 256:
+            #     logits = aiter_dsv3_router_gemm(
+            #         hidden_states, self.weight, gemm_output_zero_allocator
+            #     )
+            # else:
+            logits = F.linear(hidden_states, self.weight, None)
 
         return logits
 
@@ -1450,6 +1457,9 @@ class DeepseekV2AttentionMLA(nn.Module):
         self.w_kc = None
         self.w_vc = None
         self.w_scale = 1.0
+        
+        self.w_kc_scale = None
+        self.w_vc_scale = None
 
         self.w_scale_k = None
         self.w_scale_v = None
@@ -1489,15 +1499,17 @@ class DeepseekV2AttentionMLA(nn.Module):
             and self.fused_qkv_a_proj_with_mqa.quant_method.quant_config.get_name()
             in {"awq", "awq_marlin", "moe_wna16"}
         )
-        self.use_min_latency_fused_a_gemm = (
-            has_fused_proj
-            and not is_packed_weight
-            and self.fused_qkv_a_proj_with_mqa.weight.dtype == torch.bfloat16
-            and self.fused_qkv_a_proj_with_mqa.weight.shape[0] == 2112
-            and self.fused_qkv_a_proj_with_mqa.weight.shape[1] == 7168
-            and _is_cuda
-            and 90 <= _device_sm < 120
-        )
+        # self.use_min_latency_fused_a_gemm = (
+        #     has_fused_proj
+        #     and not is_packed_weight
+        #     and self.fused_qkv_a_proj_with_mqa.weight.dtype == torch.bfloat16
+        #     and self.fused_qkv_a_proj_with_mqa.weight.shape[0] == 2112
+        #     and self.fused_qkv_a_proj_with_mqa.weight.shape[1] == 7168
+        #     and _is_cuda
+        #     and 90 <= _device_sm < 120
+        # )
+        
+        self.use_min_latency_fused_a_gemm = False
 
         self.qkv_proj_with_rope_is_int8 = (
             has_fused_proj
@@ -2203,6 +2215,10 @@ class DeepseekV2AttentionMLA(nn.Module):
                 torch.bfloat16,
             )
             attn_bmm_output = attn_bmm_output.transpose(0, 1).flatten(1, 2)
+        elif self.w_vc.dtype == torch.int8:
+            attn_output_quant_val, attn_output_quant_scale, _ = scaled_int8_quant(attn_output.transpose(0, 1).contiguous())
+            attn_bmm_output = cutlass_scaled_batch_mm(a = attn_output_quant_val, b = self.w_vc, scale_a = attn_output_quant_scale, scale_b = self.w_vc_scale, out_dtype = attn_output.dtype)
+            attn_bmm_output = attn_bmm_output.transpose(0, 1).flatten(1, 2)    
         else:
             if is_in_piecewise_cuda_graph():
                 # torch dynamo requires out= op was called where output tensor was non-contiguous
@@ -2459,6 +2475,9 @@ class DeepseekV2AttentionMLA(nn.Module):
                 self.w_scale,
                 torch.bfloat16,
             )
+        elif self.w_vc.dtype == torch.int8:
+            attn_output_quant_val, attn_output_quant_scale, _ = scaled_int8_quant(attn_output.transpose(0, 1).contiguous())
+            attn_bmm_output = cutlass_scaled_batch_mm(a = attn_output_quant_val, b = self.w_vc, scale_a = attn_output_quant_scale, scale_b = self.w_vc_scale, out_dtype = attn_output.dtype)
         else:
             attn_bmm_output = torch.bmm(attn_output.transpose(0, 1), self.w_vc)
         attn_output = attn_bmm_output.transpose(0, 1).flatten(1, 2)
@@ -3301,6 +3320,7 @@ class DeepseekV2ForCausalLM(nn.Module):
         self.config = config
         self.tp_size = get_tensor_model_parallel_world_size()
         self.quant_config = quant_config
+        self.enable_dequant_bf16 = True if os.getenv("MX_ENABLE_DEQUANT_BF16") else False      
         self.determine_num_fused_shared_experts()
         self.use_nsa = is_deepseek_nsa(config)
         self.model = DeepseekV2Model(
@@ -3575,10 +3595,17 @@ class DeepseekV2ForCausalLM(nn.Module):
                             weight, weight_scale, weight_block_size
                         ).to(torch.bfloat16)
                 else:
-                    # channel-wise int8 need it
-                    w = w.to(torch.bfloat16) * self_attn.kv_b_proj.weight_scale.to(
-                        torch.bfloat16
-                    )
+                    if self.enable_dequant_bf16:
+                        # channel-wise int8 need it
+                        w = w.to(torch.bfloat16) * self_attn.kv_b_proj.weight_scale.to(
+                            torch.bfloat16
+                        )
+                    else:
+                        w_kc_scale, w_vc_scale = self_attn.kv_b_proj.weight_scale.unflatten(
+                            0, (-1, self_attn.qk_nope_head_dim + self_attn.v_head_dim)
+                        ).split([self_attn.qk_nope_head_dim, self_attn.v_head_dim], dim=1)
+                        self_attn.w_kc_scale = w_kc_scale.transpose(1, 2).contiguous().transpose(1, 2)
+                        self_attn.w_vc_scale = w_vc_scale.contiguous().transpose(1, 2)
 
             w_kc, w_vc = w.unflatten(
                 0, (-1, self_attn.qk_nope_head_dim + self_attn.v_head_dim)
@@ -3597,6 +3624,10 @@ class DeepseekV2ForCausalLM(nn.Module):
                 self_attn.w_kc = bind_or_assign(
                     self_attn.w_kc, w_kc.transpose(1, 2).contiguous().transpose(1, 2)
                 )
+                self_attn.w_kc = self_attn.w_kc.contiguous()                
+                if (self.enable_dequant_bf16 is False) and self_attn.w_kc.dtype == torch.int8 and self_attn.w_kc_scale is not None:
+                    self_attn.w_kc = (self_attn.w_kc.to(torch.float32) * self_attn.w_kc_scale).to(torch.bfloat16)          
+                
                 w_vc = w_vc.contiguous().transpose(1, 2)
                 if _is_npu:
                     w_vc = w_vc.contiguous()

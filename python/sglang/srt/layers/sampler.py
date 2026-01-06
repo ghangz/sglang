@@ -18,11 +18,12 @@ from sglang.srt.server_args import get_global_server_args
 from sglang.srt.utils import crash_on_warnings, get_bool_env_var, is_cuda, is_npu
 
 if is_cuda():
-    from sgl_kernel import (
+    import flashinfer
+    from flashinfer import (
         min_p_sampling_from_probs,
-        top_k_renorm_prob,
+        top_k_renorm_probs,
         top_k_top_p_sampling_from_probs,
-        top_p_renorm_prob,
+        top_p_renorm_probs,
     )
 
 if is_npu():
@@ -135,15 +136,20 @@ class Sampler(nn.Module):
                 )
             else:
                 if get_global_server_args().sampling_backend == "flashinfer":
+                    max_top_k_round, batch_size = 32, probs.shape[0]
+                    uniform_samples = torch.rand(
+                        (max_top_k_round, batch_size), device=probs.device
+                    )
                     if sampling_info.need_min_p_sampling:
-                        probs = top_k_renorm_prob(probs, sampling_info.top_ks)
-                        probs = top_p_renorm_prob(probs, sampling_info.top_ps)
+                        probs = top_k_renorm_probs(probs, sampling_info.top_ks)
+                        probs = top_p_renorm_probs(probs, sampling_info.top_ps)
                         batch_next_token_ids = min_p_sampling_from_probs(
-                            probs, sampling_info.min_ps
+                            probs, uniform_samples, sampling_info.min_ps
                         )
                     else:
-                        batch_next_token_ids = top_k_top_p_sampling_from_probs(
+                        batch_next_token_ids , success= top_k_top_p_sampling_from_probs(
                             probs.contiguous(),
+                            uniform_samples,
                             sampling_info.top_ks,
                             sampling_info.top_ps,
                             filter_apply_order="joint",
