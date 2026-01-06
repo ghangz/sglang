@@ -3,12 +3,12 @@ from typing import Optional, Union
 
 import torch
 
-try:
-    from sgl_kernel import flash_ops
-except:
-    raise ImportError(
-        "Can not import FA3 in sgl_kernel. Please check your installation."
-    )
+# try:
+#     from sgl_kernel import flash_ops
+# except:
+#     raise ImportError(
+#         "Can not import FA3 in sgl_kernel. Please check your installation."
+#     )
 
 try:
     from ._fa4_interface import flash_attn_varlen_func as flash_attn_varlen_func_v4

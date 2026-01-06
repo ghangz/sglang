@@ -7,43 +7,43 @@ from sgl_kernel.utils import is_arch_support_pdl
 
 # These implementations extensively draw from and build upon the FlashInfer project https://github.com/flashinfer-ai/flashinfer
 # Kudos to @yzh119
-def rmsnorm(
-    input: torch.Tensor,
-    weight: torch.Tensor,
-    eps: float = 1e-6,
-    out: Optional[torch.Tensor] = None,
-    enable_pdl: Optional[bool] = None,
-) -> torch.Tensor:
-    r"""Root mean square normalization.
+# def rmsnorm(
+#     input: torch.Tensor,
+#     weight: torch.Tensor,
+#     eps: float = 1e-6,
+#     out: Optional[torch.Tensor] = None,
+#     enable_pdl: Optional[bool] = None,
+# ) -> torch.Tensor:
+#     r"""Root mean square normalization.
 
-    ``out[i] = (input[i] / RMS(input)) * weight[i]``
+#     ``out[i] = (input[i] / RMS(input)) * weight[i]``
 
-    Parameters
-    ----------
-    input: torch.Tensor
-        Input tensor, shape (batch_size, hidden_size).
-    weight: torch.Tensor
-        Weight tensor, shape (hidden_size,).
-    eps: float
-        Epsilon for numerical stability.
-    out: Optional[torch.Tensor]
-        The output tensor, if specified, the kernel will update this tensor inplace.
-    enable_pdl: Optional[bool]
-        Whether to enable `programmatic dependent launch
-        <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#programmatic-dependent-launch-and-synchronization>`_
-        If None, will be automatically enabled on Hopper architecture.
+#     Parameters
+#     ----------
+#     input: torch.Tensor
+#         Input tensor, shape (batch_size, hidden_size).
+#     weight: torch.Tensor
+#         Weight tensor, shape (hidden_size,).
+#     eps: float
+#         Epsilon for numerical stability.
+#     out: Optional[torch.Tensor]
+#         The output tensor, if specified, the kernel will update this tensor inplace.
+#     enable_pdl: Optional[bool]
+#         Whether to enable `programmatic dependent launch
+#         <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#programmatic-dependent-launch-and-synchronization>`_
+#         If None, will be automatically enabled on Hopper architecture.
 
-    Returns
-    -------
-    output: torch.Tensor
-        Normalized tensor, shape (batch_size, hidden_size).
-    """
-    if out is None:
-        out = torch.empty_like(input)
-    if enable_pdl is None:
-        enable_pdl = is_arch_support_pdl()
-    torch.ops.sgl_kernel.rmsnorm.default(out, input, weight, eps, enable_pdl)
-    return out
+#     Returns
+#     -------
+#     output: torch.Tensor
+#         Normalized tensor, shape (batch_size, hidden_size).
+#     """
+#     if out is None:
+#         out = torch.empty_like(input)
+#     if enable_pdl is None:
+#         enable_pdl = is_arch_support_pdl()
+#     torch.ops.sgl_kernel.rmsnorm.default(out, input, weight, eps, enable_pdl)
+#     return out
 
 
 def fused_add_rmsnorm(
@@ -83,80 +83,80 @@ def fused_add_rmsnorm(
     )
 
 
-def gemma_rmsnorm(
-    input: torch.Tensor,
-    weight: torch.Tensor,
-    eps: float = 1e-6,
-    out: Optional[torch.Tensor] = None,
-    enable_pdl: Optional[bool] = None,
-) -> torch.Tensor:
-    r"""Gemma-style root mean square normalization.
+# def gemma_rmsnorm(
+#     input: torch.Tensor,
+#     weight: torch.Tensor,
+#     eps: float = 1e-6,
+#     out: Optional[torch.Tensor] = None,
+#     enable_pdl: Optional[bool] = None,
+# ) -> torch.Tensor:
+#     r"""Gemma-style root mean square normalization.
 
-    ``out[i] = (input[i] / RMS(input)) * (weight[i] + 1)``
+#     ``out[i] = (input[i] / RMS(input)) * (weight[i] + 1)``
 
-    Parameters
-    ----------
-    input: torch.Tensor
-        Input tensor, shape (batch_size, hidden_size).
-    weight: torch.Tensor
-        Weight tensor, shape (hidden_size,).
-    eps: float
-        Epsilon for numerical stability.
-    out: Optional[torch.Tensor]
-        The output tensor, if specified, the kernel will update this tensor inplace.
-    enable_pdl: Optional[bool]
-        Whether to enable `programmatic dependent launch
-        <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#programmatic-dependent-launch-and-synchronization>`_
-        If None, will be automatically enabled on Hopper architecture.
+#     Parameters
+#     ----------
+#     input: torch.Tensor
+#         Input tensor, shape (batch_size, hidden_size).
+#     weight: torch.Tensor
+#         Weight tensor, shape (hidden_size,).
+#     eps: float
+#         Epsilon for numerical stability.
+#     out: Optional[torch.Tensor]
+#         The output tensor, if specified, the kernel will update this tensor inplace.
+#     enable_pdl: Optional[bool]
+#         Whether to enable `programmatic dependent launch
+#         <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#programmatic-dependent-launch-and-synchronization>`_
+#         If None, will be automatically enabled on Hopper architecture.
 
-    Returns
-    -------
-    output: torch.Tensor
-        Gemma Normalized tensor, shape (batch_size, hidden_size).
-    """
-    if out is None:
-        out = torch.empty_like(input)
-    if enable_pdl is None:
-        enable_pdl = is_arch_support_pdl()
-    torch.ops.sgl_kernel.gemma_rmsnorm.default(out, input, weight, eps, enable_pdl)
-    return out
+#     Returns
+#     -------
+#     output: torch.Tensor
+#         Gemma Normalized tensor, shape (batch_size, hidden_size).
+#     """
+#     if out is None:
+#         out = torch.empty_like(input)
+#     if enable_pdl is None:
+#         enable_pdl = is_arch_support_pdl()
+#     torch.ops.sgl_kernel.gemma_rmsnorm.default(out, input, weight, eps, enable_pdl)
+#     return out
 
 
-def gemma_fused_add_rmsnorm(
-    input: torch.Tensor,
-    residual: torch.Tensor,
-    weight: torch.Tensor,
-    eps: float = 1e-6,
-    enable_pdl: Optional[bool] = None,
-) -> None:
-    r"""Gemma-style fused add root mean square normalization.
+# def gemma_fused_add_rmsnorm(
+#     input: torch.Tensor,
+#     residual: torch.Tensor,
+#     weight: torch.Tensor,
+#     eps: float = 1e-6,
+#     enable_pdl: Optional[bool] = None,
+# ) -> None:
+#     r"""Gemma-style fused add root mean square normalization.
 
-    Step 1:
-    ``residual[i] += input[i]``
+#     Step 1:
+#     ``residual[i] += input[i]``
 
-    Step 2:
-    ``input[i] = (residual[i] / RMS(residual)) * (weight + 1)``
+#     Step 2:
+#     ``input[i] = (residual[i] / RMS(residual)) * (weight + 1)``
 
-    Parameters
-    ----------
-    input: torch.Tensor
-        Input tensor, shape (batch_size, hidden_size).
-    residual: torch.Tensor
-        Residual tensor, shape (batch_size, hidden_size).
-    weight: torch.Tensor
-        Weight tensor, shape (hidden_size,).
-    eps: float
-        Epsilon for numerical stability.
-    enable_pdl: Optional[bool]
-        Whether to enable `programmatic dependent launch
-        <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#programmatic-dependent-launch-and-synchronization>`_
-        If None, will be automatically enabled on Hopper architecture.
-    """
-    if enable_pdl is None:
-        enable_pdl = is_arch_support_pdl()
-    torch.ops.sgl_kernel.gemma_fused_add_rmsnorm.default(
-        input, residual, weight, eps, enable_pdl
-    )
+#     Parameters
+#     ----------
+#     input: torch.Tensor
+#         Input tensor, shape (batch_size, hidden_size).
+#     residual: torch.Tensor
+#         Residual tensor, shape (batch_size, hidden_size).
+#     weight: torch.Tensor
+#         Weight tensor, shape (hidden_size,).
+#     eps: float
+#         Epsilon for numerical stability.
+#     enable_pdl: Optional[bool]
+#         Whether to enable `programmatic dependent launch
+#         <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#programmatic-dependent-launch-and-synchronization>`_
+#         If None, will be automatically enabled on Hopper architecture.
+#     """
+#     if enable_pdl is None:
+#         enable_pdl = is_arch_support_pdl()
+#     torch.ops.sgl_kernel.gemma_fused_add_rmsnorm.default(
+#         input, residual, weight, eps, enable_pdl
+#     )
 
 
 def _check_shape(input: torch.Tensor, output: torch.Tensor) -> None:
@@ -365,21 +365,20 @@ def rotary_embedding(
         positions, query, key, head_size, cos_sin_cache, is_neox
     )
 
-
-def downcast_fp8(
-    k: torch.Tensor,
-    v: torch.Tensor,
-    k_out: torch.Tensor,
-    v_out: torch.Tensor,
-    k_scale: torch.Tensor,
-    v_scale: torch.Tensor,
-    loc: torch.Tensor,
-    mult: int = 1,
-    offset: int = 0,
-) -> None:
-    torch.ops.sgl_kernel.downcast_fp8(
-        k, v, k_out, v_out, k_scale, v_scale, loc, mult, offset
-    )
+# def downcast_fp8(
+#     k: torch.Tensor,
+#     v: torch.Tensor,
+#     k_out: torch.Tensor,
+#     v_out: torch.Tensor,
+#     k_scale: torch.Tensor,
+#     v_scale: torch.Tensor,
+#     loc: torch.Tensor,
+#     mult: int = 1,
+#     offset: int = 0,
+# ) -> None:
+#     torch.ops.sgl_kernel.downcast_fp8(
+#         k, v, k_out, v_out, k_scale, v_scale, loc, mult, offset
+#     )
 
 
 def copy_to_gpu_no_ce(input: torch.Tensor, output: torch.Tensor):

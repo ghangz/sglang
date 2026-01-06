@@ -200,7 +200,7 @@ def _find_cuda_home():
             cuda_home = os.path.dirname(os.path.dirname(nvcc_path))
         else:
             # Guess #3
-            cuda_home = "/usr/local/cuda"
+            cuda_home = "/opt/maca/"
     return cuda_home
 
 
@@ -218,7 +218,7 @@ def _preload_cuda_library():
     ]
 
     for base in candidate_dirs:
-        candidate = base / "libcudart.so.12"
+        candidate = base / "libruntime_cu.so"
         if candidate.exists():
             try:
                 cuda_runtime_lib = candidate.resolve()
