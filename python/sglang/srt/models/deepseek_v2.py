@@ -930,7 +930,7 @@ class DeepseekV2MoE(nn.Module):
             # fused in biased_grouped_topk so we can skip here
             final_hidden_states *= self.routed_scaling_factor
         if shared_output is not None:
-            final_hidden_states += shared_output
+            final_hidden_states.add_(shared_output)
         if (
             self.tp_size > 1
             and not should_allreduce_fusion

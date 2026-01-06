@@ -21,6 +21,7 @@ from sglang.srt.utils import (
     is_cpu,
     is_cuda,
     is_hip,
+    get_int_env_var,
 )
 
 from .fused_moe_triton_config import get_config_dtype_str, try_get_optimal_moe_config
@@ -57,7 +58,8 @@ elif _is_hip:
         from vllm import _custom_ops as vllm_ops
 
 padding_size = 128 if bool(int(os.getenv("SGLANG_MOE_PADDING", "0"))) else 0
-
+g_fuse_moe_cache: torch.tensor = None
+g_fuse_moe_cache_enable = bool(get_int_env_var("SGLANG_FUSE_MOE_CACHE_ENABLE", 1))
 
 def inplace_fused_experts(
     hidden_states: torch.Tensor,
@@ -450,11 +452,29 @@ def fused_experts_impl(
         min(M * topk, E + 1) * (max_block_m - 1) if down_moe_use_tma else 0
     )
     total_tokens = M * topk + max_padded_tokens
-    cache = torch.empty(
-        total_tokens * max(N, w2.shape[1]),
-        device=hidden_states.device,
-        dtype=hidden_states.dtype,
-    )
+    cache_len = total_tokens * max(N, w2.shape[1])
+
+    global g_fuse_moe_cache_enable, g_fuse_moe_cache
+    if g_fuse_moe_cache_enable and M >= 1024:
+        if g_fuse_moe_cache is not None and cache_len > g_fuse_moe_cache.numel():
+            del g_fuse_moe_cache
+            g_fuse_moe_cache = None
+
+        if g_fuse_moe_cache is None:
+            g_fuse_moe_cache = torch.empty(
+                cache_len,
+                device=hidden_states.device,
+                dtype=hidden_states.dtype,
+            )
+    if g_fuse_moe_cache is not None:
+        cache = g_fuse_moe_cache
+    else:
+        cache = torch.empty(
+            cache_len,
+            device=hidden_states.device,
+            dtype=hidden_states.dtype,
+        )
+        
     intermediate_cache3 = cache[: M * topk * w2.shape[1]].view(
         (M, topk, w2.shape[1]),
     )
