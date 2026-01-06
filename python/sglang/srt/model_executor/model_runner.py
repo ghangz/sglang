@@ -57,6 +57,9 @@ from sglang.srt.distributed import (
     set_mscclpp_all_reduce,
     set_torch_symm_mem_all_reduce,
 )
+from sglang.srt.layers.dp_modules import (
+    initialize_dp_modules,
+)
 from sglang.srt.distributed.parallel_state import monkey_patch_vllm_parallel_state
 from sglang.srt.elastic_ep.elastic_ep import ElasticEPStateManager
 from sglang.srt.environ import envs
@@ -779,6 +782,15 @@ class ModelRunner(ModelRunnerKVCacheMixin):
             )
             if is_npu():
                 register_sgl_tp_rank(self.gpu_id)
+                
+            initialize_dp_modules(
+                tp_rank=self.tp_rank,
+                tp_size=self.tp_size,
+                moe_dense_tp_size=self.server_args.moe_dense_tp_size,
+                moe_shared_expert_tp_size=self.server_args.moe_shared_expert_tp_size,
+                embedding_tp_size=self.server_args.embedding_tp_size,
+                lmhead_tp_size=self.server_args.lmhead_tp_size,
+            )
 
         min_per_gpu_memory = get_available_gpu_memory(
             self.device,
@@ -2259,7 +2271,7 @@ class ModelRunner(ModelRunnerKVCacheMixin):
             return ModelRunnerOutput(logits_output=ret, can_run_graph=can_run_graph)
 
         # For MLP sync
-        if forward_batch.global_num_tokens_cpu is not None:
+        if forward_batch.global_num_tokens_cpu is not None and not forward_batch.is_cuda_capture:
             forward_batch.prepare_mlp_sync_batch(self)
         else:
             forward_batch.prepare_attn_tp_scatter_input(self)
@@ -2300,6 +2312,7 @@ class ModelRunner(ModelRunnerKVCacheMixin):
 
         if (
             forward_batch.global_num_tokens_cpu is not None
+            and not forward_batch.is_cuda_capture
             and self.pp_group.is_last_rank
         ):
             forward_batch.post_forward_mlp_sync_batch(ret)

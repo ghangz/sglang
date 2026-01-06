@@ -619,6 +619,8 @@ class CudaGraphRunner:
                 )
             )
             global_dp_buffer_len = num_tokens * self.dp_size
+            gathered_input = buffers.gathered_input[:num_tokens * self.dp_size]
+            global_num_tokens_cpu = buffers.global_num_tokens_gpu.cpu().tolist()
         elif self.require_attn_tp_gather:
             buffers.global_num_tokens_gpu.copy_(
                 torch.tensor(
@@ -635,8 +637,12 @@ class CudaGraphRunner:
                 )
             )
             global_dp_buffer_len = num_tokens
+            gathered_input = buffers.gathered_input[:num_tokens]
+            global_num_tokens_cpu = buffers.global_num_tokens_gpu.cpu().tolist()
         else:
             global_dp_buffer_len = None
+            gathered_input = None
+            global_num_tokens_cpu = None
 
         spec_info = self.get_spec_info(num_tokens)
         if self.capture_hidden_mode != CaptureHiddenMode.FULL:
@@ -701,6 +707,7 @@ class CudaGraphRunner:
             num_token_non_padded=buffers.num_token_non_padded,
             global_forward_mode=self.capture_forward_mode,
             lora_ids=lora_ids,
+            is_cuda_capture=True,
         )
         self.tbo_plugin.capture_one_batch_size(forward_batch, num_tokens=num_tokens)
 

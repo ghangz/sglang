@@ -31,6 +31,7 @@ class GraphInputBuffers:
     global_num_tokens_for_logprob_gpu: torch.Tensor
     encoder_lens: Optional[torch.Tensor]
     pp_proxy_tensors: Optional[Dict[str, torch.Tensor]]
+    gathered_input : torch.Tensor
 
     @classmethod
     def create(
@@ -93,6 +94,7 @@ class GraphInputBuffers:
             else:
                 encoder_lens = None
 
+            gathered_input = torch.zeros( (max_num_token * dp_size,), dtype=torch.int64,)
             if require_mlp_tp_gather:
                 global_num_tokens_gpu = torch.zeros((dp_size,), dtype=torch.int32)
                 global_num_tokens_for_logprob_gpu = torch.zeros(
@@ -128,6 +130,7 @@ class GraphInputBuffers:
             global_num_tokens_gpu=global_num_tokens_gpu,
             global_num_tokens_for_logprob_gpu=global_num_tokens_for_logprob_gpu,
             pp_proxy_tensors=pp_proxy_tensors,
+            gathered_input=gathered_input,
         )
 
     def populate_from_forward_batch(

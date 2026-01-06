@@ -134,6 +134,12 @@ class EAGLEDraftExtendCudaGraphRunner:
                 (self.max_bs,), self.num_tokens_per_bs, dtype=torch.int32
             )
 
+            self.gathered_input = torch.zeros(
+                (
+                    self.max_num_token * self.dp_size,
+                ),
+                dtype=torch.int64,
+            )
             if self.require_gathered_buffer:
                 if self.require_mlp_tp_gather:
                     self.global_num_tokens_gpu = torch.zeros(
@@ -265,6 +271,8 @@ class EAGLEDraftExtendCudaGraphRunner:
                 )
             )
             global_dp_buffer_len = num_tokens * self.dp_size
+            gathered_input = self.gathered_input[:num_tokens * self.dp_size]
+            global_num_tokens_cpu = self.global_num_tokens_gpu.cpu().tolist()
         elif self.require_attn_tp_gather:
             self.global_num_tokens_gpu.copy_(
                 torch.tensor(
@@ -281,8 +289,12 @@ class EAGLEDraftExtendCudaGraphRunner:
                 )
             )
             global_dp_buffer_len = num_tokens
+            gathered_input = self.gathered_input[:num_tokens]
+            global_num_tokens_cpu = self.global_num_tokens_gpu.cpu().tolist()
         else:
             global_dp_buffer_len = None
+            gathered_input = None
+            global_num_tokens_cpu = None
 
         spec_info = EagleDraftInput(
             hidden_states=hidden_states,
@@ -312,7 +324,9 @@ class EAGLEDraftExtendCudaGraphRunner:
             positions=positions,
             mrope_positions=mrope_positions,
             global_num_tokens_gpu=self.global_num_tokens_gpu,
+            global_num_tokens_cpu=global_num_tokens_cpu,
             global_num_tokens_for_logprob_gpu=self.global_num_tokens_for_logprob_gpu,
+            gathered_input=gathered_input,
             dp_padding_mode=dp_padding_mode,
             global_dp_buffer_len=global_dp_buffer_len,
             spec_algorithm=self.model_runner.spec_algorithm,
@@ -320,6 +334,7 @@ class EAGLEDraftExtendCudaGraphRunner:
             capture_hidden_mode=CaptureHiddenMode.LAST,
             attn_backend=self.eagle_worker.draft_extend_attn_backend,
             padded_static_len=self.padded_static_len,
+            is_cuda_capture=True,
         )
 
         self.eagle_worker.draft_extend_attn_backend.init_forward_metadata_capture_cuda_graph(

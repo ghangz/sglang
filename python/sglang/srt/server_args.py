@@ -463,8 +463,13 @@ class ServerArgs:
     enable_expert_distribution_metrics: bool = False
     deepep_config: Optional[str] = None
     moe_dense_tp_size: Optional[int] = None
+    moe_shared_expert_tp_size: Optional[int] = None
     elastic_ep_backend: Literal[None, "mooncake"] = None
     mooncake_ib_device: Optional[str] = None
+
+    # Embedding expert parallelism
+    embedding_tp_size: Optional[int] = None
+    lmhead_tp_size: Optional[int] = None
 
     # Mamba cache
     max_mamba_cache_size: Optional[int] = None
@@ -733,6 +738,17 @@ class ServerArgs:
 
         # Handle any other necessary validations.
         self._handle_other_validations()
+        
+        # Handle embedding tp size.
+        self._handle_embedding_tp_size()
+
+    def _handle_embedding_tp_size(self):
+        if self.embedding_tp_size is None:
+            attention_tp_size = self.tp_size  // self.dp_size
+            self.embedding_tp_size = min(self.tp_size, attention_tp_size)
+            logger.warning(
+                f"Embedding tp size is adjusted to {self.embedding_tp_size}."
+            )            
 
     
     def _recompute_cuda_graph(self):
@@ -3649,6 +3665,24 @@ class ServerArgs:
             help="TP size for MoE dense MLP layers. This flag is useful when, with large TP size, there are errors caused by weights in MLP layers having dimension smaller than the min dimension GEMM supports.",
         )
         parser.add_argument(
+            "--moe-shared-expert-tp-size",
+            type=int,
+            default=ServerArgs.moe_shared_expert_tp_size,
+            help="TP size for MoE shared expert layers",
+        )
+        parser.add_argument(
+            "--embedding-tp-size",
+            type=int,
+            default=ServerArgs.embedding_tp_size,
+            help="TP size for Embedding.",
+        )
+        parser.add_argument(
+            "--lmhead-tp-size",
+            type=int,
+            default=ServerArgs.lmhead_tp_size,
+            help="TP size for LM Head.",
+        )
+        parser.add_argument(
             "--elastic-ep-backend",
             type=str,
             default=ServerArgs.elastic_ep_backend,
@@ -4580,6 +4614,22 @@ class ServerArgs:
             f"Invalid value: '{self.served_model_name}'"
         )
 
+        assert (
+            self.moe_dense_tp_size is None
+            or self.tp_size % self.moe_dense_tp_size == 0
+            ), "moe_dense_tp_size must > 0 and tp_size % moe_dense_tp_size == 0"
+        assert (
+            self.moe_shared_expert_tp_size is None
+            or self.tp_size % self.moe_shared_expert_tp_size == 0
+            ), "moe_shared_expert_tp_size must > 0 and tp_size % moe_shared_expert_tp_size == 0"
+        assert (
+            self.embedding_tp_size is None
+            or self.tp_size % self.embedding_tp_size == 0
+            ), "embedding_tp_size must > 0 and tp_size % embedding_tp_size == 0"
+        assert (
+            self.lmhead_tp_size is None
+            or self.tp_size % self.lmhead_tp_size == 0
+            ), "lmhead_tp_size must > 0 and  tp_size % lmhead_tp_size == 0"
         # Check LoRA
         self.check_lora_server_args()
 

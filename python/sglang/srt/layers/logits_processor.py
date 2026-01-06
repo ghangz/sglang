@@ -48,6 +48,12 @@ from sglang.srt.layers.utils.logprob import (
     get_top_logprobs_chunk,
     get_top_logprobs_prefill,
 )
+from sglang.srt.layers.dp_modules import (
+    DpModuleId,
+    get_module_tp_size,
+    module_gather_attn_replicate,
+    module_tp_all_gather,
+)
 from sglang.srt.layers.vocab_parallel_embedding import VocabParallelEmbedding
 from sglang.srt.model_executor.forward_batch_info import (
     CaptureHiddenMode,
@@ -236,6 +242,7 @@ class LogitsProcessor(nn.Module):
         skip_all_gather: bool = False,
         logit_scale: Optional[float] = None,
         return_full_logits: bool = False,
+        enable_custom_tp_size: bool = False
     ):
         super().__init__()
         self.config = config
@@ -270,6 +277,24 @@ class LogitsProcessor(nn.Module):
         self.enable_logprobs_chunk = envs.SGLANG_ENABLE_LOGITS_PROCESSER_CHUNK.get()
         # chunk size for logprobs processing
         self.logprobs_chunk_size = envs.SGLANG_LOGITS_PROCESSER_CHUNK_SIZE.get()
+                
+        self.module_id = DpModuleId.LM_HEAD
+        self.enable_custom_dp_lm_head = False
+        if enable_custom_tp_size:
+            module_tp_size = get_module_tp_size(self.module_id)
+            attn_tp_size = get_attention_tp_size()
+            assert(
+                get_module_tp_size(self.module_id) % get_attention_tp_size() == 0
+            ), f'{self.module_id} tp size ({module_tp_size}) must be mutiple of attention tp size({attn_tp_size})'
+        
+            self.enable_custom_dp_lm_head = True
+            self.do_tensor_parallel_all_gather = (
+                not skip_all_gather and module_tp_size > 1
+            )
+            self.do_tensor_parallel_all_gather_dp_attn = (
+                self.do_tensor_parallel_all_gather and module_tp_size >  attn_tp_size
+            )
+        # logger.error(f'{self.module_id=} {self.enable_custom_dp_lm_head=} {self.do_tensor_parallel_all_gather=}')
 
     def compute_logprobs_for_multi_item_scoring(
         self,
@@ -907,7 +932,9 @@ class LogitsProcessor(nn.Module):
             logits.mul_(self.logit_scale)
 
         if self.do_tensor_parallel_all_gather:
-            if self.use_attn_tp_group:
+            if self.enable_custom_dp_lm_head:
+                logits = module_tp_all_gather(self.module_id, logits)
+            elif self.use_attn_tp_group:
                 if self.config.vocab_size % self.attn_tp_size == 0:
                     global_logits = torch.empty(
                         (

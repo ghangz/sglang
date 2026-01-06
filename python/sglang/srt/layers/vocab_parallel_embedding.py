@@ -9,6 +9,7 @@ from torch.nn.parameter import Parameter, UninitializedParameter
 
 from sglang.srt.distributed import (
     divide,
+    get_tp_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
     get_tp_group,
@@ -19,7 +20,11 @@ from sglang.srt.distributed.device_communicators.pynccl_allocator import (
 )
 from sglang.srt.layers.amx_utils import PackWeightMethod
 from sglang.srt.layers.communicator import get_attn_tp_context
-from sglang.srt.layers.dp_attention import get_attention_tp_rank, get_attention_tp_size
+from sglang.srt.layers.dp_attention import (
+    get_attention_tp_rank,
+    get_attention_tp_group,
+    get_attention_tp_size
+)
 from sglang.srt.layers.parameter import BasevLLMParameter
 from sglang.srt.layers.quantization.base_config import (
     QuantizationConfig,
@@ -32,6 +37,16 @@ from sglang.srt.utils import (
     get_compiler_backend,
     is_cpu,
     set_weight_attrs,
+)
+
+from sglang.srt.layers.dp_modules import (
+    DpModuleId,
+    get_module_tp_group,
+    get_module_tp_rank,
+    get_module_tp_size,
+    module_gather_attn_replicate,
+    module_scatter_attn,
+    get_module_local_tokens,
 )
 
 DEFAULT_VOCAB_PADDING_SIZE = 64
@@ -203,6 +218,8 @@ class VocabParallelEmbedding(torch.nn.Module):
         enable_tp: bool = True,
         use_attn_tp_group: bool = False,
         use_presharded_weights: bool = False,
+        enable_custom_tp_size: bool = False,
+        module_id: DpModuleId = DpModuleId.EMBEDDING
     ):
         super().__init__()
         self.quant_config = quant_config
@@ -212,13 +229,31 @@ class VocabParallelEmbedding(torch.nn.Module):
             if use_attn_tp_group:
                 tp_rank = get_attention_tp_rank()
                 self.tp_size = get_attention_tp_size()
+                self.tp_group = get_attention_tp_group()
             else:
                 tp_rank = get_tensor_model_parallel_rank()
                 self.tp_size = get_tensor_model_parallel_world_size()
+                self.tp_group = get_tp_group()
         else:
             assert use_attn_tp_group is False
             tp_rank = 0
             self.tp_size = 1
+            self.tp_group = None
+
+        self.module_id = module_id
+        self.need_dp_gather = False
+        if enable_custom_tp_size:
+            tp_rank = get_module_tp_rank(self.module_id)
+            module_tp_size = get_module_tp_size(self.module_id)
+            attn_tp_size = get_attention_tp_size()
+            self.tp_size = module_tp_size
+            self.tp_group = get_module_tp_group(self.module_id)
+            if module_tp_size > attn_tp_size:
+                assert(
+                    module_tp_size % attn_tp_size == 0
+                ), f'{self.module_id} tp size ({module_tp_size}) must be mutiple of attention tp size({attn_tp_size})'
+                self.need_dp_gather = True
+                # logger.info(f'{self.module_id=} {tp_rank=}  {self.tp_size=} attention_tp_size={get_attention_tp_size()} {self.need_dp_gather=}')
 
         self.num_embeddings = num_embeddings
         self.org_vocab_size = org_num_embeddings or num_embeddings
@@ -460,11 +495,23 @@ class VocabParallelEmbedding(torch.nn.Module):
         param[: loaded_weight.shape[0]].data.copy_(loaded_weight)
         param[loaded_weight.shape[0] :].data.fill_(0)
 
-    def forward(self, input_):
+    def forward(self, input_, forward_batch = None):
+        if self.need_dp_gather:
+            assert (forward_batch is not None), 'forward_batch should not be None when dp enabled'
+            local_num_token = sum(get_module_local_tokens(self.module_id, forward_batch))
+            dp_input, local_input = (
+                forward_batch.gathered_input[:local_num_token],
+                input_,
+            )
+            module_gather_attn_replicate(self.module_id, dp_input, local_input, forward_batch)
+            gathered_input_ = dp_input
+        else:
+            gathered_input_ = input_
+        
         if self.tp_size > 1:
             # Build the mask.
             masked_input, input_mask = get_masked_input_and_mask(
-                input_,
+                gathered_input_,
                 self.shard_indices.org_vocab_start_index,
                 self.shard_indices.org_vocab_end_index,
                 self.shard_indices.num_org_vocab_padding,
@@ -472,7 +519,7 @@ class VocabParallelEmbedding(torch.nn.Module):
                 self.shard_indices.added_vocab_end_index,
             )
         else:
-            masked_input = input_
+            masked_input = gathered_input_
 
         # Get the embeddings.
         with use_symmetric_memory(get_tp_group(), disabled=not self.enable_tp):
@@ -483,7 +530,21 @@ class VocabParallelEmbedding(torch.nn.Module):
             output_parallel.masked_fill_(input_mask.unsqueeze(-1), 0)
             if not get_attn_tp_context().input_scattered:
                 # Reduce across all the model parallel GPUs.
-                output_parallel = tensor_model_parallel_all_reduce(output_parallel)
+                # output_parallel = tensor_model_parallel_all_reduce(output_parallel)
+                assert(self.tp_group is not None)
+                output = self.tp_group.all_reduce(output_parallel)
+                
+        if self.need_dp_gather:
+            out, global_out = (
+                torch.empty(
+                    (input_.shape[0], output.shape[1]),
+                    device=output.device,
+                    dtype=output.dtype,
+                ),
+                output,
+            )
+            module_scatter_attn(self.module_id, out, global_out, forward_batch)
+            return out
         return output_parallel
 
     def extra_repr(self) -> str:
@@ -525,6 +586,7 @@ class ParallelLMHead(VocabParallelEmbedding):
         prefix: str = "",
         use_attn_tp_group: bool = False,
         use_presharded_weights: bool = False,
+        enable_custom_tp_size: bool = False,
     ):
         super().__init__(
             num_embeddings,
@@ -536,6 +598,8 @@ class ParallelLMHead(VocabParallelEmbedding):
             prefix=prefix,
             use_attn_tp_group=use_attn_tp_group,
             use_presharded_weights=use_presharded_weights,
+            enable_custom_tp_size=enable_custom_tp_size,
+            module_id = DpModuleId.LM_HEAD
         )
         self.quant_config = quant_config
 

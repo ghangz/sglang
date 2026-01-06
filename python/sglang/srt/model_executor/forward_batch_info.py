@@ -359,10 +359,15 @@ class ForwardBatch:
     # this will be recomputed in LogitsMetadata.from_forward_batch
     dp_local_start_pos: Optional[torch.Tensor] = None  # cached info at runtime
     dp_local_num_tokens: Optional[torch.Tensor] = None  # cached info at runtime
+    dp_module_start_pos: Optional[torch.Tensor] = None  # cached info at runtime
+    dp_module_num_tokens: Optional[torch.Tensor] = None  # cached info at runtime
     global_dp_buffer_len: Optional[int] = None
+    gathered_input: Optional[torch.Tensor] = None
     is_extend_in_batch: bool = False
     can_run_dp_cuda_graph: bool = False
     global_forward_mode: Optional[ForwardMode] = None
+    # whether in cuda graph capture flow
+    is_cuda_capture: bool = False
 
     # Whether this batch is prefill-only (no token generation needed)
     is_prefill_only: bool = False
@@ -477,6 +482,13 @@ class ForwardBatch:
             ret.global_num_tokens_for_logprob_gpu = torch.tensor(
                 global_num_tokens_for_logprob, dtype=torch.int64
             ).to(device, non_blocking=True)
+
+            sum_len = sum(global_num_tokens)
+            ret.gathered_input = torch.zeros(
+                (sum_len),
+                dtype=torch.int64,
+                device=device,
+            )
 
         if ret.forward_mode.is_idle():
             ret.positions = torch.empty((0,), dtype=torch.int64, device=device)
@@ -906,6 +918,11 @@ class ForwardBatch:
             self.mamba_track_seqlens = self._pad_tensor_to_size(
                 self.mamba_track_seqlens, bs
             )
+        self.gathered_input = torch.zeros(
+            (sum(self.global_num_tokens_cpu)),
+            dtype=torch.int64,
+            device=self.global_num_tokens_gpu.device,
+        )
 
         if self.mrope_positions is not None:
             self.mrope_positions = self._pad_tensor_to_size(self.mrope_positions, bs)

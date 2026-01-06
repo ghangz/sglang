@@ -477,6 +477,7 @@ class DeepseekV2MLP(nn.Module):
     ) -> None:
         super().__init__()
         self.tp_size = tp_size
+        self.tp_group = None
 
         self.gate_up_proj = MergedColumnParallelLinear(
             hidden_size,
@@ -496,6 +497,7 @@ class DeepseekV2MLP(nn.Module):
             prefix=add_prefix("down_proj", prefix),
             tp_rank=tp_rank,
             tp_size=tp_size,
+            tp_group=None,
         )
         if not hasattr(self.gate_up_proj, "weight"):
             self.gate_up_proj.weight = getattr(self.gate_up_proj, "weight_packed")
@@ -3059,6 +3061,7 @@ class DeepseekV2Model(nn.Module):
                 config.vocab_size,
                 config.hidden_size,
                 enable_tp=not is_dp_attention_enabled(),
+                enable_custom_tp_size = get_global_server_args().embedding_tp_size,
             )
         else:
             self.embed_tokens = PPMissingLayer()
@@ -3191,7 +3194,7 @@ class DeepseekV2Model(nn.Module):
 
         if self.pp_group.is_first_rank:
             if input_embeds is None:
-                hidden_states = self.embed_tokens(input_ids)
+                hidden_states = self.embed_tokens(input_ids, forward_batch)
             else:
                 hidden_states = input_embeds
             residual = None
@@ -3326,6 +3329,7 @@ class DeepseekV2ForCausalLM(nn.Module):
         self.model = DeepseekV2Model(
             config, quant_config, prefix=add_prefix("model", prefix)
         )
+        enable_lmhead_tp_size = get_global_server_args().lmhead_tp_size is not None        
         if self.pp_group.is_last_rank:
             if self.pp_group.world_size == 1 and config.tie_word_embeddings:
                 self.lm_head = self.model.embed_tokens
@@ -3336,11 +3340,12 @@ class DeepseekV2ForCausalLM(nn.Module):
                     quant_config=quant_config,
                     prefix=add_prefix("lm_head", prefix),
                     use_attn_tp_group=get_global_server_args().enable_dp_lm_head,
+                    enable_custom_tp_size=enable_lmhead_tp_size,                    
                 )
         else:
             # ranks other than the last rank will have a placeholder layer
             self.lm_head = PPMissingLayer()
-        self.logits_processor = LogitsProcessor(config)
+        self.logits_processor = LogitsProcessor(config, enable_custom_tp_size=enable_lmhead_tp_size)
 
         self._routed_experts_weights_of_layer = LazyValue(
             lambda: {

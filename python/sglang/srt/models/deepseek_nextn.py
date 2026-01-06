@@ -92,6 +92,7 @@ class DeepseekModelNextN(nn.Module):
             config.hidden_size,
             enable_tp=not is_dp_attention_enabled(),
             prefix=add_prefix("embed_tokens", prefix),
+            enable_custom_tp_size=get_global_server_args().embedding_tp_size is not None,
         )
 
         self.enorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -146,7 +147,7 @@ class DeepseekModelNextN(nn.Module):
         )
 
         if input_embeds is None:
-            hidden_states = self.embed_tokens(input_ids)
+            hidden_states = self.embed_tokens(input_ids, forward_batch)
         else:
             hidden_states = input_embeds
 

@@ -105,7 +105,12 @@ class EAGLEDraftCudaGraphRunner:
                 (self.max_bs, self.model_runner.model_config.hidden_size),
                 dtype=self.model_runner.dtype,
             )
-
+            self.gathered_input = torch.zeros(
+                (
+                    self.max_num_token * self.dp_size,
+                ),
+                dtype=torch.int64,
+            )
             if self.require_gathered_buffer:
                 if self.require_mlp_tp_gather:
                     self.global_num_tokens_gpu = torch.zeros(
@@ -215,6 +220,8 @@ class EAGLEDraftCudaGraphRunner:
             global_num_tokens = self.global_num_tokens_gpu
             global_dp_buffer_len = num_tokens * self.dp_size
             global_num_tokens_for_logprob = self.global_num_tokens_for_logprob_gpu
+            gathered_input = self.gathered_input[:num_tokens * self.dp_size]
+            global_num_tokens_cpu = global_num_tokens.cpu().tolist()
         elif self.require_attn_tp_gather:
             self.global_num_tokens_gpu.copy_(
                 torch.tensor(
@@ -233,10 +240,14 @@ class EAGLEDraftCudaGraphRunner:
             global_num_tokens = self.global_num_tokens_gpu
             global_dp_buffer_len = num_tokens
             global_num_tokens_for_logprob = self.global_num_tokens_for_logprob_gpu
+            gathered_input = self.gathered_input[:num_tokens]
+            global_num_tokens_cpu = global_num_tokens.cpu().tolist()
         else:
             global_num_tokens = None
             global_dp_buffer_len = None
             global_num_tokens_for_logprob = None
+            gathered_input = None
+            global_num_tokens_cpu = None
 
         spec_info = EagleDraftInput(
             topk_p=topk_p,
@@ -265,6 +276,8 @@ class EAGLEDraftCudaGraphRunner:
             mrope_positions=mrope_positions,
             global_num_tokens_gpu=global_num_tokens,
             global_num_tokens_for_logprob_gpu=global_num_tokens_for_logprob,
+            global_num_tokens_cpu=global_num_tokens_cpu,
+            gathered_input = gathered_input,
             dp_padding_mode=dp_padding_mode,
             global_dp_buffer_len=global_dp_buffer_len,
             spec_algorithm=self.model_runner.spec_algorithm,
@@ -272,6 +285,7 @@ class EAGLEDraftCudaGraphRunner:
             capture_hidden_mode=(
                 spec_info.capture_hidden_mode if spec_info else CaptureHiddenMode.NULL
             ),
+            is_cuda_capture=True,
         )
 
         # Attention backend
@@ -283,6 +297,7 @@ class EAGLEDraftCudaGraphRunner:
         def run_once():
             # Clean intermediate result cache for DP attention
             forward_batch.dp_local_start_pos = forward_batch.dp_local_num_tokens = None
+            forward_batch.dp_module_start_pos = forward_batch.dp_module_num_tokens = None            
             set_dp_buffer_len(
                 global_dp_buffer_len,
                 num_tokens,
