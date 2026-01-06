@@ -346,6 +346,18 @@ std::vector<at::Tensor> kimi_k2_moe_fused_gate(
     double routed_scaling_factor,
     bool apply_routed_scaling_factor_on_output);
 
+int64_t fused_moe_gate_opt(
+    at::Tensor& gating_outputs, 
+    at::Tensor& correction_bias, 
+    at::Tensor& out_routing_weights, 
+    at::Tensor& out_selected_experts, 
+    int64_t topk, 
+    bool renormalize, 
+    int64_t num_expert_groupm, 
+    int64_t topk_group, 
+    std::optional<int64_t> num_fused_shared_experts, 
+    std::optional<double> routed_scaling_factor);
+
 // void fp8_blockwise_scaled_grouped_mm(
 //     torch::Tensor& output,
 //     torch::Tensor& a_ptrs,

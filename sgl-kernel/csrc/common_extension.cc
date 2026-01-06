@@ -37,6 +37,11 @@ TORCH_LIBRARY_FRAGMENT(sgl_kernel, m) {
       "dynamic_scaled_int8_quant(Tensor! result, Tensor input, Tensor! scale, "
       "Tensor!? azp) -> ()");
   m.impl("dynamic_scaled_int8_quant", torch::kCUDA, &dynamic_scaled_int8_quant);
+
+  m.def("fused_moe_gate_opt(Tensor gating_outputs, Tensor correction_bias, Tensor! out_routing_weights, Tensor! out_selected_experts, "
+        "int topk, bool renormalize, int num_expert_group, int topk_group, int? num_fused_shared_experts, float? routed_scaling_factor ) -> int");
+  m.impl("fused_moe_gate_opt", torch::kCUDA, &fused_moe_gate_opt);
+
   /*
    * From csrc/allreduce
    */

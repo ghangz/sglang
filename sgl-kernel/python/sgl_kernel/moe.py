@@ -357,3 +357,28 @@ def fused_qk_norm_rope(
 #         params["blockscale_offsets"],
 #     )
 #     return c.to(dtype=out_dtype)
+
+def fused_moe_gate_opt(
+    gating_outputs: torch.Tensor,
+    correction_bias: torch.Tensor,
+    out_routing_weights: torch.Tensor,
+    out_selected_experts: torch.Tensor,
+    topk: int = None,
+    renormalize: bool = None,
+    num_expert_group: int = None,
+    topk_group: int = None,
+    num_shared_experts: Optional[int] = None,
+    scale_factor: Optional[float] = None,
+) -> int :
+    return torch.ops.sgl_kernel.fused_moe_gate_opt.default(
+        gating_outputs,
+        correction_bias,
+        out_routing_weights,
+        out_selected_experts,
+        topk,
+        renormalize,
+        num_expert_group,
+        topk_group,
+        num_shared_experts,
+        scale_factor
+    )

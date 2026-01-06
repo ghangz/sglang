@@ -33,6 +33,8 @@ try:
 except:
     _support_tensor_descriptor = False
 
+import mctlassEx
+
 _is_hip = is_hip()
 _is_cuda = is_cuda()
 _is_cpu_amx_available = cpu_has_amx_support()
@@ -48,6 +50,7 @@ elif _is_hip:
 
 padding_size = 128 if bool(int(os.getenv("SGLANG_MOE_PADDING", "0"))) else 0
 enable_mctlass_fused_moe = (os.getenv("ENABLE_MCTLASS_FUSED_MOE", "1") == "1")
+enable_mctlass_fused_moe_python_api = (os.getenv("ENABLE_MCTLASS_FUSED_MOE_PYTHON_API", "1") == "1")
 
 def support_tensor_descriptor():
     return _support_tensor_descriptor
@@ -721,15 +724,22 @@ def invoke_fused_moe_kernel(
             **config,
         )
     elif use_int8_w8a8  and enable_mctlass_fused_moe:
-         cutlass_moe_mm_w8a8(A, B, C,
-                            A_scale, B_scale, topk_weights, sorted_token_ids, expert_ids,
-                            num_tokens_post_padded,
-                            B.shape[1], # N
-                            A.shape[1], # K
-                            sorted_token_ids.shape[0],
-                            topk_ids.numel(), # num_valid_tokens
-                            top_k,
-                            mul_routed_weight)
+        if enable_mctlass_fused_moe_python_api:
+            stream_ptr = torch.cuda.current_stream().cuda_stream
+            mctlass_op = mctlassEx.mctlassExHandleWrapper()
+            C1 = C.view(-1, C.size(-1)).contiguous()
+            # kernel_m = mctlass_op.mctlass_fuse_moe_get_kernel_m(A, B, C1, top_k)
+            mctlass_op.mctlass_fuse_moe_gemm(A, B, C1, A_scale, B_scale, topk_weights, sorted_token_ids, expert_ids, num_tokens_post_padded, sorted_token_ids.shape[0], top_k, mul_routed_weight, stream_ptr)
+        else:
+            cutlass_moe_mm_w8a8(A, B, C,
+                                A_scale, B_scale, topk_weights, sorted_token_ids, expert_ids,
+                                num_tokens_post_padded,
+                                B.shape[1], # N
+                                A.shape[1], # K
+                                sorted_token_ids.shape[0],
+                                topk_ids.numel(), # num_valid_tokens
+                                top_k,
+                                mul_routed_weight)
     else:
         if a_use_tma or b_use_tma:
             # TMA descriptors require a global memory allocation
