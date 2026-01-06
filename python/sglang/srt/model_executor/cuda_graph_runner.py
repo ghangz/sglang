@@ -64,6 +64,7 @@ from sglang.srt.multiplex.pdmux_context import get_current_stream_idx, get_strea
 from sglang.srt.utils import (
     empty_context,
     get_available_gpu_memory,
+    get_device_memory_capacity,
     get_bool_env_var,
     is_hip,
     log_info_on_rank0,
@@ -190,6 +191,29 @@ def get_batch_sizes_to_capture(model_runner: ModelRunner):
     server_args = model_runner.server_args
     capture_bs = server_args.cuda_graph_bs
 
+    if capture_bs is None:
+        if server_args.speculative_algorithm is None:
+            if server_args.disable_cuda_graph_padding:
+                capture_bs = list(range(1, 33)) + list(range(48, 161, 16))
+            else:
+                capture_bs = [1, 2, 4, 8] + list(range(16, 161, 8))
+        else:
+            # Since speculative decoding requires more cuda graph memory, we
+            # capture less.
+            capture_bs = (
+                list(range(1, 9))
+                + list(range(10, 33, 2))
+                + list(range(40, 64, 8))
+                + list(range(80, 161, 16))
+            )
+
+        gpu_mem = get_device_memory_capacity()
+        if gpu_mem is not None:
+            if gpu_mem > 90 * 1024:  # H200, H20
+                capture_bs += list(range(160, 257, 8))
+            if gpu_mem > 160 * 1000:  # B200, MI300
+                capture_bs += list(range(256, 513, 16))
+
     if max(capture_bs) > model_runner.req_to_token_pool.size:
         # In some cases (e.g., with a small GPU or --max-running-requests), the #max-running-requests
         # is very small. We add more values here to make sure we capture the maximum bs.
@@ -203,7 +227,17 @@ def get_batch_sizes_to_capture(model_runner: ModelRunner):
     if require_gathered_buffer(server_args):
         mul_base *= get_attention_tp_size()
 
-    capture_bs = [bs for bs in capture_bs if bs % mul_base == 0]
+    sum_len_bs = []
+    if server_args.speculative_algorithm is None:
+        sum_len_bs = [bs for bs in capture_bs if (bs < 10 and bs % mul_base != 0)]
+    capture_bs = sum_len_bs + [bs for bs in capture_bs if bs % mul_base == 0]
+
+    if server_args.cuda_graph_max_bs:
+        capture_bs = [bs for bs in capture_bs if bs <= server_args.cuda_graph_max_bs]
+        if max(capture_bs) < server_args.cuda_graph_max_bs:
+            capture_bs += list(
+                range(max(capture_bs), server_args.cuda_graph_max_bs + 1, 16)
+            )
 
     capture_bs = [bs for bs in capture_bs if bs <= model_runner.req_to_token_pool.size]
     capture_bs = list(sorted(set(capture_bs)))
@@ -213,7 +247,7 @@ def get_batch_sizes_to_capture(model_runner: ModelRunner):
         if server_args.enable_torch_compile
         else []
     )
-    return capture_bs, compile_bs
+    return capture_bs, compile_bs, sum_len_bs
 
 
 # Reuse this memory pool across all cuda graph runners.
@@ -268,7 +302,7 @@ class CudaGraphRunner:
         self.is_dllm = self.dllm_config is not None
 
         # Batch sizes to capture
-        self.capture_bs, self.compile_bs = get_batch_sizes_to_capture(model_runner)
+        self.capture_bs, self.compile_bs, self.sum_len_bs = get_batch_sizes_to_capture(model_runner)
         log_info_on_rank0(logger, f"Capture cuda graph bs {self.capture_bs}")
         if KTRANSFORMERS_AVAILABLE:
             KTMoEWrapper.set_capture_batch_sizes(self.capture_bs)
@@ -635,6 +669,7 @@ class CudaGraphRunner:
             assert self.enable_pdmux
             attn_backend = self.model_runner.decode_attn_backend_group[stream_idx]
 
+        dp_padding_mode = DpPaddingMode.SUM_LEN if bs in self.sum_len_bs else DpPaddingMode.get_default_mode_in_cuda_graph()
         forward_batch = ForwardBatch(
             forward_mode=self.capture_forward_mode,
             batch_size=bs,
@@ -657,7 +692,7 @@ class CudaGraphRunner:
             positions=positions,
             global_num_tokens_gpu=buffers.global_num_tokens_gpu,
             global_num_tokens_for_logprob_gpu=buffers.global_num_tokens_for_logprob_gpu,
-            dp_padding_mode=DpPaddingMode.get_default_mode_in_cuda_graph(),
+            dp_padding_mode=dp_padding_mode,
             global_dp_buffer_len=global_dp_buffer_len,
             mrope_positions=mrope_positions,
             spec_algorithm=self.model_runner.spec_algorithm,

@@ -700,6 +700,9 @@ class ServerArgs:
 
         # Handle speculative decoding logic.
         self._handle_speculative_decoding()
+        
+        # Handle cuda grap max bs config
+        self._recompute_cuda_graph()
 
         # Handle model loading format.
         self._handle_load_format()
@@ -730,6 +733,22 @@ class ServerArgs:
 
         # Handle any other necessary validations.
         self._handle_other_validations()
+
+    
+    def _recompute_cuda_graph(self):
+        if self.enable_dp_attention:
+            self.cuda_graph_max_bs  = self.cuda_graph_max_bs // self.dp_size
+            if self.max_running_requests is not None:
+                self.cuda_graph_max_bs = min(self.cuda_graph_max_bs, self.max_running_requests // self.dp_size)
+            logger.warning(
+                f"Cuda graph max bs is adjusted to {self.cuda_graph_max_bs}."
+            )
+        else:
+            if self.max_running_requests is not None:
+                self.cuda_graph_max_bs = min(self.cuda_graph_max_bs, self.max_running_requests)
+            logger.warning(
+                f"Cuda graph max bs is adjusted to {self.cuda_graph_max_bs}."
+            )
 
     def _handle_deprecated_args(self):
         # Handle deprecated tool call parsers
@@ -862,7 +881,7 @@ class ServerArgs:
                     self.chunked_prefill_size = 8192
                 if self.cuda_graph_max_bs is None:
                     if self.tp_size < 4:
-                        self.cuda_graph_max_bs = 256
+                        self.cuda_graph_max_bs = 128
                     else:
                         self.cuda_graph_max_bs = 512
             elif gpu_mem < 160 * 1024:
@@ -890,9 +909,7 @@ class ServerArgs:
                 self.cuda_graph_max_bs = 160
 
         # Set cuda graph batch sizes
-        if self.cuda_graph_bs is None:
-            self.cuda_graph_bs = self._generate_cuda_graph_batch_sizes()
-        else:
+        if self.cuda_graph_bs is not None:
             self.cuda_graph_max_bs = max(self.cuda_graph_bs)
 
         if self.piecewise_cuda_graph_max_tokens is None:
@@ -1994,7 +2011,7 @@ class ServerArgs:
             if self.max_running_requests is None:
                 self.max_running_requests = 48
                 logger.warning(
-                    "Max running requests is reset to 48 for speculative decoding. You can override this by explicitly setting --max-running-requests."
+                    "Max running requests is reset to 128 for speculative decoding. You can override this by explicitly setting --max-running-requests."
                 )
 
             if (
