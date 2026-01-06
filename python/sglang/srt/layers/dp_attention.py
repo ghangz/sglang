@@ -61,8 +61,9 @@ class DpPaddingMode(IntEnum):
     def get_dp_padding_mode(
         cls, is_extend_in_batch, global_num_tokens: List[int]
     ) -> DpPaddingMode:
-        if is_extend_in_batch:
-            return DpPaddingMode.SUM_LEN
+        # Comment out to fix TTFT perf drop
+        # if is_extend_in_batch:
+        #     return DpPaddingMode.SUM_LEN
 
         # we choose the mode that minimizes the communication cost
         max_len = max(global_num_tokens)
