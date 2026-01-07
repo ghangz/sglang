@@ -282,8 +282,13 @@ class GroupCoordinator:
         self.local_size = get_int_env_var("LOCAL_SIZE", 0)
 
         for ranks in group_ranks:
+            opts = None
+            if torch_distributed_backend == "nccl" or torch_distributed_backend == torch.distributed.Backend.NCCL:
+                opts = torch.distributed.ProcessGroupNCCL.Options()
+                opts.is_high_priority_stream = True
+                
             device_group = torch.distributed.new_group(
-                ranks, backend=torch_distributed_backend
+                ranks, backend=torch_distributed_backend, pg_options=opts
             )
             # a cpu_group to allow direct coordination between processes through
             # the CPU. The backend is chosen based on `torch_distributed_backend`
@@ -1541,6 +1546,11 @@ def init_distributed_environment(
             assert timeout > 0, "timeout must be positive"
             timeout = timedelta(seconds=timeout)
 
+        opts = None
+        if backend == "nccl":
+            opts = torch.distributed.ProcessGroupNCCL.Options()
+            opts.is_high_priority_stream = True
+
         # this backend is used for WORLD
         torch.distributed.init_process_group(
             backend=backend,
@@ -1548,6 +1558,7 @@ def init_distributed_environment(
             world_size=world_size,
             rank=rank,
             timeout=timeout,
+            pg_options=opts            
         )
 
     # set the local rank
