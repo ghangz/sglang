@@ -1,0 +1,1410 @@
+{
+    "1": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 8,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "8": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "16": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "cpasync",
+            "scenario": "roll;storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "31": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "32": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "36": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "37": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "38": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "48": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "64": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "78": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "96": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "127": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "128": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "192": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "223": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "250": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "256": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "cpasync",
+            "scenario": "storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "272": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "288": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "512": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "513": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "520": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "641": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "650": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "678": {
+        "stage1": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 16,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "717": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        }
+    },
+    "918": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        }
+    },
+    "1024": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 2,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "1025": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "cpasync",
+            "scenario": "roll;storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "1028": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "cpasync",
+            "scenario": "storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        }
+    },
+    "1153": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "cpasync",
+            "scenario": "unroll;storeCoalesce"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        }
+    },
+    "1286": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        }
+    },
+    "1408": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 3,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "1423": {
+        "stage1": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 32,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 4,
+            "pipeline": "cpasync",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 32,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 32,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        }
+    },
+    "1802": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "2048": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "2191": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "2456": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "2566": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "3072": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "5076": {
+        "stage1": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "5109": {
+        "stage1": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "5639": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "5760": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "5916": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "6124": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "6811": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "6898": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "6967": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "7024": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "7076": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 16,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "7153": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "7170": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "7267": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "7447": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "7479": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "7568": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "7681": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "7841": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "8029": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "8076": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 64,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    },
+    "8097": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": ""
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll;unprefetch"
+        }
+    },
+    "8192": {
+        "stage1": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 64,
+            "BLOCK_SIZE_K": 256,
+            "GROUP_SIZE_M": 1,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "roll"
+        },
+        "stage2": {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": 128,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 1,
+            "pipeline": "basic",
+            "scenario": "unprefetch"
+        }
+    }
+}

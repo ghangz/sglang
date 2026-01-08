@@ -416,7 +416,7 @@ class Envs:
     SGLANG_ENABLE_METRICS_DP_ATTENTION = EnvBool(False)
 
     # fmt: on
-
+    OVERLAP_QK_NORM = EnvBool(False)
 
 envs = Envs()
 EnvField._allow_set_name = False
