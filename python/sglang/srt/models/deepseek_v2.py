@@ -124,6 +124,7 @@ from sglang.srt.layers.quantization.fp8_utils import (
 from sglang.srt.layers.quantization.int8_utils import (
     block_dequant as int8_block_dequant,
 )
+from sglang.srt.layers.quantization.awq import awq_dequantize_wrapper
 from sglang.srt.layers.radix_attention import RadixAttention
 from sglang.srt.layers.rotary_embedding import get_rope_wrapper
 from sglang.srt.layers.utils import PPMissingLayer, get_layer_id
@@ -499,9 +500,9 @@ class DeepseekV2MLP(nn.Module):
             tp_size=tp_size,
             tp_group=None,
         )
-        if not hasattr(self.gate_up_proj, "weight"):
+        if not hasattr(self.gate_up_proj, "weight") and hasattr(self.gate_up_proj, "weight_packed"):
             self.gate_up_proj.weight = getattr(self.gate_up_proj, "weight_packed")
-        if not hasattr(self.down_proj, "weight"):
+        if not hasattr(self.down_proj, "weight") and hasattr(self.down_proj, "weight_packed"):
             self.down_proj.weight = getattr(self.down_proj, "weight_packed")
         if hidden_act != "silu":
             raise ValueError(
@@ -3486,7 +3487,7 @@ class DeepseekV2ForCausalLM(nn.Module):
             if hasattr(self_attn.kv_b_proj, "qweight"):
                 # AWQ compatible
                 if _is_cuda or _is_hip or _is_npu:
-                    w = awq_dequantize(
+                    w = awq_dequantize_wrapper(
                         self_attn.kv_b_proj.qweight,
                         self_attn.kv_b_proj.scales,
                         self_attn.kv_b_proj.qzeros,
@@ -3688,9 +3689,9 @@ class DeepseekV2ForCausalLM(nn.Module):
             else:
                 raise ValueError("num_nextn_predict_layers is not in the config")
 
-        weights = self._maybe_quant_weights_to_fp8_ue8m0(
-            weights, NVFP4_CKPT_FP8_ATTN_QUANT_MODULES, is_nextn
-        )
+        # weights = self._maybe_quant_weights_to_fp8_ue8m0(
+        #     weights, NVFP4_CKPT_FP8_ATTN_QUANT_MODULES, is_nextn
+        # )
 
         stacked_params_mapping = [
             # (param_name, shard_name, shard_id)

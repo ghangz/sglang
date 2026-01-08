@@ -4602,6 +4602,9 @@ class ServerArgs:
         return self.mamba_scheduler_strategy == "extra_buffer"
 
     def check_server_args(self):
+        # Check model data type
+        assert self.dtype not in ["half", "float16"], '"half" and "float16" are not supported.'
+
         # Check parallel size constraints
         assert (
             self.tp_size * self.pp_size

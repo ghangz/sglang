@@ -42,7 +42,9 @@ _is_cpu = is_cpu()
 _use_aiter = get_bool_env_var("SGLANG_USE_AITER") and _is_hip
 
 if _is_cuda:
-    pass
+    from moe_fused_w4a16 import (
+        mctlass_fused_moe_kernel_w4a16
+    )
 elif _is_cpu and _is_cpu_amx_available:
     pass
 elif _is_hip:
@@ -51,6 +53,9 @@ elif _is_hip:
 padding_size = 128 if bool(int(os.getenv("SGLANG_MOE_PADDING", "0"))) else 0
 enable_mctlass_fused_moe = (os.getenv("ENABLE_MCTLASS_FUSED_MOE", "1") == "1")
 enable_mctlass_fused_moe_python_api = (os.getenv("ENABLE_MCTLASS_FUSED_MOE_PYTHON_API", "1") == "1")
+enable_maca_sglang_fused_moe_mctlass_w4a16 = bool(
+    int(os.getenv("ENABLE_MACA_SGLANG_FUSED_MOE_MCTLASS_W4A16", "1"))
+)
 
 def support_tensor_descriptor():
     return _support_tensor_descriptor
@@ -678,6 +683,28 @@ def invoke_fused_moe_kernel(
         even_Ks = False
 
     if (
+        enable_maca_sglang_fused_moe_mctlass_w4a16 and use_int4_w4a16
+        and block_shape is not None
+        and block_shape[1] > 0
+    ):
+        mctlass_fused_moe_kernel_w4a16(
+            A,
+            B,
+            C,
+            B_scale,
+            B_zp,
+            topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            B.shape[1],
+            A.shape[1],
+            sorted_token_ids.shape[0],
+            topk_ids.numel(),
+            top_k,
+            mul_routed_weight
+        )
+    elif (
         (use_int8_w8a16 or use_int4_w4a16)
         and block_shape is not None
         and block_shape[1] > 0

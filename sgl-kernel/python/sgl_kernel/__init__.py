@@ -111,6 +111,7 @@ from sgl_kernel.quantization import (
     ggml_mul_mat_a8,
     ggml_mul_mat_vec_a8,
     scaled_int8_quant,   
+    mx_awq_dequantize     
 )
 from sgl_kernel.sampling import (
     # min_p_sampling_from_probs,
