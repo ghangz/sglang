@@ -45,6 +45,7 @@ from sglang.srt.utils import (
     is_hip,
     next_power_of_2,
     set_weight_attrs,
+    use_intel_amx_backend,
 )
 
 if TYPE_CHECKING:
@@ -1245,59 +1246,53 @@ class CompressedTensorsW8A8Int8MoEMethod(CompressedTensorsMoEMethod):
     ):
         self.moe_runner_config = moe_runner_config
         self.runner = MoeRunner(MoeRunnerBackend.TRITON, moe_runner_config)
-        
+
     def apply(
         self,
         layer: torch.nn.Module,
-        x: torch.Tensor,
-        # router_logits: torch.Tensor,
-        # top_k: int,
-        # renormalize: bool,
-        # use_grouped_topk: bool = False,
-        # topk_group: Optional[int] = None,
-        # num_expert_group: Optional[int] = None,
-        # num_fused_shared_experts: int = 0,
-        # custom_routing_function: Optional[Callable] = None,
-        # scoring_func: str = "softmax",
-        # correction_bias: Optional[torch.Tensor] = None,
-        # activation: str = "silu",
-        # apply_router_weight_on_input: bool = False,
-        # inplace: bool = True,
-        # no_combine: bool = False,
-        # routed_scaling_factor: Optional[float] = None,
-        topk_output: TopKOutput,
-        moe_runner_config: MoeRunnerConfig,
+        dispatch_output: StandardDispatchOutput,
     ) -> torch.Tensor:
-        from sglang.srt.layers.moe.fused_moe_triton import fused_experts
-        # from sglang.srt.layers.moe.topk import select_experts
+        from sglang.srt.layers.moe.token_dispatcher import StandardCombineInput
 
-        # topk_weights, topk_ids = select_experts(
-        #     hidden_states=x,
-        #     router_logits=router_logits,
-        #     use_grouped_topk=use_grouped_topk,
-        #     top_k=top_k,
-        #     renormalize=renormalize,
-        #     topk_group=topk_group,
-        #     num_expert_group=num_expert_group,
-        #     num_fused_shared_experts=num_fused_shared_experts,
-        #     custom_routing_function=custom_routing_function,
-        #     correction_bias=correction_bias,
-        #     routed_scaling_factor=routed_scaling_factor,
-        # )
+        x = dispatch_output.hidden_states
+        topk_output = dispatch_output.topk_output
 
-        return fused_experts(
-            x,
-            layer.w13_weight,
-            layer.w2_weight,
-            topk_output=topk_output,
-            moe_runner_config=moe_runner_config,
+        if use_intel_amx_backend(layer):
+            from sglang.srt.layers.moe.topk import apply_topk_weights_cpu
+
+            topk_weights, topk_ids, _ = topk_output
+            x, topk_weights = apply_topk_weights_cpu(
+                self.moe_runner_config.apply_router_weight_on_input, topk_weights, x
+            )
+            output = torch.ops.sgl_kernel.fused_experts_cpu(
+                x,
+                layer.w13_weight,
+                layer.w2_weight,
+                topk_weights,
+                topk_ids,
+                False,  # inplace See [Note] inplace should be False in fused_experts.
+                True,  # use_int8_w8a8
+                False,  # use_fp8_w8a16
+                layer.w13_weight_scale,  # w1_scale
+                layer.w2_weight_scale,  # w2_scale
+                None,  # block_size
+                layer.w13_input_scale,  # a1_scale
+                layer.w2_input_scale,  # a2_scale
+                True,  # is_vnni
+            )
+            return StandardCombineInput(hidden_states=output)
+
+        quant_info = TritonMoeQuantInfo(
+            w13_weight=layer.w13_weight,
+            w2_weight=layer.w2_weight,
             use_int8_w8a8=True,
             per_channel_quant=True,
-            w1_scale=layer.w13_weight_scale,
+            w13_scale=layer.w13_weight_scale,
             w2_scale=layer.w2_weight_scale,
-            a1_scale=layer.w13_input_scale,
+            a13_scale=layer.w13_input_scale,
             a2_scale=layer.w2_input_scale,
         )
+        return self.runner.run(dispatch_output, quant_info)
 
 class CompressedTensorsW8A8Int8EPMoEMethod(CompressedTensorsW8A8Int8MoEMethod):
     def __init__(self, quant_config: "CompressedTensorsConfig"):
