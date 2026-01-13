@@ -66,6 +66,7 @@ enable_mctlass_fused_moe = (os.getenv("ENABLE_MCTLASS_FUSED_MOE", "1") == "1")
 enable_maca_sglang_fused_moe_mctlass_w4a16 = bool(
     int(os.getenv("ENABLE_MACA_SGLANG_FUSED_MOE_MCTLASS_W4A16", "1"))
 )
+enable_mctlass_fused_moe_python_api = (os.getenv("ENABLE_MCTLASS_FUSED_MOE_PYTHON_API", "0") == "1")
 
 def inplace_fused_experts(
     hidden_states: torch.Tensor,
@@ -548,7 +549,13 @@ def fused_experts_impl(
         #  and envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
         if use_int8_w8a8 and enable_mctlass_fused_moe:
             # call mctlass gemm_kernel_mnk to calculate kernel_m
-            kernel_m = cutlass_moe_mm_gemm_kernel_m_w8a8(curr_topk_ids.numel(), N,
+            if enable_mctlass_fused_moe_python_api:
+                import mctlassEx
+                from mctlassEx import FusedMoeGEMM
+                gemm = FusedMoeGEMM()
+                kernel_m = gemm.get_kernel_m(curr_hidden_states.view(torch.int8), w1, intermediate_cache1, w1.shape[0], curr_hidden_states.shape[0], w1.shape[1], curr_hidden_states.shape[1], topk_ids.shape[1])
+            else:
+                kernel_m = cutlass_moe_mm_gemm_kernel_m_w8a8(curr_topk_ids.numel(), N,
                                                          curr_hidden_states.shape[1], E)
             assert kernel_m > 0, ("cutlass_moe_w8a8 BLOCK_SIZE_M must greater than zero.")
             # override kernel_m to config["BLOCK_SIZE_M"]

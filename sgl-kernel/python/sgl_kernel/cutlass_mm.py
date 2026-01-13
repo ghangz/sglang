@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Optional, Union
 import torch
-
+import mctlassEx
 
 # Batch gemm in vllm, support w8a8 int8 quantization
 def cutlass_scaled_batch_mm(a: torch.Tensor, b: torch.Tensor,
@@ -54,7 +54,10 @@ def cutlass_scaled_mm(a: torch.Tensor,
 
     out = torch.empty((m, n), dtype=out_dtype, device=a.device)
 
-    torch.ops.sgl_kernel.cutlass_scaled_mm.default(out, a, b, scale_a, scale_b, bias)
+    stream_ptr = torch.cuda.current_stream().cuda_stream
+    mctlass_op = mctlassEx.mctlassExHandleWrapper()
+    mctlass_op.mctlass_w8a8_scaled_mm_azp(a, b, out, scale_a, scale_b.T,None, None,None, stream_ptr)
+    # torch.ops.sgl_kernel.cutlass_scaled_mm.default(out, a, b, scale_a, scale_b, bias)
 
     return out
 

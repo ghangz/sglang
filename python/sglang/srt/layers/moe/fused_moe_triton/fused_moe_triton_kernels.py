@@ -33,8 +33,6 @@ try:
 except:
     _support_tensor_descriptor = False
 
-import mctlassEx
-
 _is_hip = is_hip()
 _is_cuda = is_cuda()
 _is_cpu_amx_available = cpu_has_amx_support()
@@ -50,7 +48,7 @@ elif _is_hip:
 
 padding_size = 128 if bool(int(os.getenv("SGLANG_MOE_PADDING", "0"))) else 0
 enable_mctlass_fused_moe = (os.getenv("ENABLE_MCTLASS_FUSED_MOE", "1") == "1")
-enable_mctlass_fused_moe_python_api = (os.getenv("ENABLE_MCTLASS_FUSED_MOE_PYTHON_API", "1") == "1")
+enable_mctlass_fused_moe_python_api = (os.getenv("ENABLE_MCTLASS_FUSED_MOE_PYTHON_API", "0") == "1")
 enable_maca_sglang_fused_moe_mctlass_w4a16 = bool(
     int(os.getenv("ENABLE_MACA_SGLANG_FUSED_MOE_MCTLASS_W4A16", "1"))
 )
@@ -750,11 +748,15 @@ def invoke_fused_moe_kernel(
         )
     elif use_int8_w8a8  and enable_mctlass_fused_moe:
         if enable_mctlass_fused_moe_python_api:
-            stream_ptr = torch.cuda.current_stream().cuda_stream
-            mctlass_op = mctlassEx.mctlassExHandleWrapper()
+            import mctlassEx
+            # stream_ptr = torch.cuda.current_stream().cuda_stream
+            # mctlass_op = mctlassEx.mctlassExHandleWrapper()
+            from mctlassEx import FusedMoeGEMM
+            gemm = FusedMoeGEMM()
             C1 = C.view(-1, C.size(-1)).contiguous()
+            gemm(A.shape[0], B.shape[1], A.shape[1], B.shape[0], sorted_token_ids.shape[0], top_k, A, B, C1, A_scale, B_scale, None, topk_weights, sorted_token_ids, expert_ids, num_tokens_post_padded, mul_routed_weight, filter_expert = filter_expert)
             # kernel_m = mctlass_op.mctlass_fuse_moe_get_kernel_m(A, B, C1, top_k)
-            mctlass_op.mctlass_fuse_moe_gemm(A, B, C1, A_scale, B_scale, topk_weights, sorted_token_ids, expert_ids, num_tokens_post_padded, sorted_token_ids.shape[0], top_k, mul_routed_weight, stream_ptr)
+            # mctlass_op.mctlass_fuse_moe_gemm(A, B, C1, A_scale, B_scale, topk_weights, sorted_token_ids, expert_ids, num_tokens_post_padded, sorted_token_ids.shape[0], top_k, mul_routed_weight, stream_ptr)
         else:
             cutlass_moe_mm_w8a8(A, B, C,
                                 A_scale, B_scale, topk_weights, sorted_token_ids, expert_ids,
