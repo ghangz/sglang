@@ -1,10 +1,10 @@
 [build-system]
 requires = [
-  "setuptools>=61.0",
+  "scikit-build-core>=0.10",
   "torch>=2.6.0",
   "wheel",
 ]
-build-backend = "setuptools.build_meta"
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "sgl-kernel"
@@ -18,9 +18,7 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
   "Environment :: GPU :: NVIDIA CUDA"
 ]
-dependencies = [
-  "torch>=2.6.0",
-]
+dependencies = []
 
 [project.urls]
 "Homepage" = "https://github.com/sgl-project/sglang/tree/main/sgl-kernel"
@@ -32,9 +30,10 @@ exclude = [
   "tests*",
 ]
 
-[tool.setuptools.packages.find]
-where = ["python"]
-include = ["sgl_kernel*"]
+[tool.scikit-build]
+cmake.build-type = "Release"
+minimum-version = "build-system.requires"
 
-[tool.setuptools.package-dir]
-"" = "python"
+wheel.py-api = "cp310"
+wheel.license-files = []
+wheel.packages = ["python/sgl_kernel"]
