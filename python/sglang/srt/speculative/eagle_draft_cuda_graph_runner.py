@@ -60,7 +60,7 @@ class EAGLEDraftCudaGraphRunner:
         )
         self.enable_pdmux = False
         self.deepep_adapter = DeepEPCudaGraphRunnerAdapter()
-
+        self.bs = 0
         # Batch sizes to capture
         self.capture_bs, self.compile_bs, self.sum_len_bs = get_batch_sizes_to_capture(model_runner)
 
@@ -368,6 +368,7 @@ class EAGLEDraftCudaGraphRunner:
         self.topk_index[:raw_bs].copy_(forward_batch.spec_info.topk_index)
         self.hidden_states[:raw_bs].copy_(forward_batch.spec_info.hidden_states)
         self.req_pool_indices[:raw_bs].copy_(forward_batch.req_pool_indices)
+        self.bs = bs
 
         # TODO(ch-wan): support num_token_non_padded
         if self.require_gathered_buffer:

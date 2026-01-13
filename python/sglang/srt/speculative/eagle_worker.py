@@ -592,6 +592,7 @@ class EAGLEWorker(TpModelWorker):
             self.topk,
             self.speculative_num_steps,
             self.speculative_num_draft_tokens,
+            self.cuda_graph_runner.bs,
         )
 
         return EagleVerifyInput(
