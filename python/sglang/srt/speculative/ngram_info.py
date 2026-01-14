@@ -51,6 +51,10 @@ elif is_hip():
 
 @dataclass
 class NgramVerifyInput(SpecInput):
+    
+    # Should be larger than draft_token_num * (draft_token_num + 1) * (capture_bs - raw_bs)
+    pad_mask_pool = torch.ones(12 * 13 * 100, dtype=torch.bool).cuda()
+
     def __init__(
         self,
         draft_token: torch.Tensor,
@@ -60,6 +64,7 @@ class NgramVerifyInput(SpecInput):
         retrive_next_token: torch.Tensor,
         retrive_next_sibling: torch.Tensor,
         draft_token_num: int,
+        raw_bs: Optional[int] = None,
     ):
         super().__init__(SpecInputType.NGRAM_VERIFY)
         self.draft_token = draft_token
@@ -70,6 +75,8 @@ class NgramVerifyInput(SpecInput):
         self.retrive_next_sibling = retrive_next_sibling
         self.draft_token_num = draft_token_num
         self.device = self.custom_mask.device
+        self.raw_bs = raw_bs
+        self.pad_num = self.draft_token_num * (self.draft_token_num + 1)
 
     def get_spec_adjust_token_coefficient(self) -> Tuple[int, int]:
         return self.draft_token_num, self.draft_token_num
@@ -127,7 +134,8 @@ class NgramVerifyInput(SpecInput):
         req_to_token: torch.Tensor,
     ):
         bs = len(req_pool_indices)
-
+        if self.raw_bs is None:
+            self.raw_bs = bs
         cum_kv_seq_len = torch.zeros((bs + 1,), dtype=torch.int32, device=self.device)
 
         paged_kernel_lens = paged_kernel_lens + self.draft_token_num
@@ -151,6 +159,11 @@ class NgramVerifyInput(SpecInput):
             kv_indices,
             req_to_token.size(1),
         )
+
+        gap = bs - self.raw_bs
+        pad_mask = NgramVerifyInput.pad_mask_pool[:gap * self.pad_num]
+        self.custom_mask = torch.cat([self.custom_mask, pad_mask])
+
         return kv_indices, cum_kv_seq_len, self.qo_indptr, self.custom_mask
 
     def _fill_requests(

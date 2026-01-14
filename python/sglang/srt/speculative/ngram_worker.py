@@ -193,6 +193,7 @@ class NGRAMWorker:
             retrive_next_token,
             retrive_next_sibling,
             self.draft_token_num,
+            raw_bs=bs,
         )
         batch.spec_info.prepare_for_verify(batch, self.page_size)
 
