@@ -1,0 +1,63 @@
+from typing import Optional
+
+import torch
+
+def fused_silu_mul_dq_quant(
+    input: torch.Tensor,
+) -> torch.Tensor:
+    """
+    input shape [token_num, hidden_dim]
+    output shape [token_num, hidden_dim // 2], dtype bf16
+    scale [toekn_nm] , dtype float
+    implement silu_and_mul + quant 
+    """
+    output = torch.empty((input.shape[0], input.shape[1] // 2), device=input.device, dtype=torch.int8)
+    scale = torch.empty((input.shape[0],1), device=input.device, dtype=torch.float32)
+    torch.ops.sgl_kernel.fused_silu_mul_dq_quant_interface.default(output, scale, input)
+    return output, scale
+
+# int8
+def scaled_int8_quant(
+    input: torch.Tensor,
+    scale: Optional[torch.Tensor] = None,
+    azp: Optional[torch.Tensor] = None,
+    symmetric: bool = True
+) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    """
+    Quantize the input tensor to int8 and return the quantized tensor and scale, and maybe azp.
+
+    Args:
+        input: The input tensor to be quantized to int8.
+        scale: Optional scaling factor for the int8 quantization.
+            When not provided, we invoke dynamic-per-token quantization.
+        azp: Optional zero-point for the int8 quantization.
+            Must be provided for asymmetric quantization if `scale` is provided.
+        symmetric: Whether to use symmetric quantization (scale only, azp ignored).
+
+    Returns:
+      tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]] : Output int8 tensor, scales, and optionally azp.
+    """
+    output = torch.empty_like(input, dtype=torch.int8)
+    if scale is not None:
+        # static-per-tensor quantization.
+        assert symmetric == (
+            azp
+            is None), "azp must only be provided for asymmetric quantization."
+        torch.ops.sgl_kernel_custom.static_scaled_int8_quant.default(output, input, scale, azp)
+        return output, scale, azp
+
+    # dynamic-per-token quantization.
+    input_scales = torch.empty((input.numel() // input.shape[-1], 1),
+                               device=input.device,
+                               dtype=torch.float32)
+    input_azp = None if symmetric else torch.empty_like(input_scales,
+                                                        dtype=torch.int32)
+    torch.ops.sgl_kernel_custom.dynamic_scaled_int8_quant.default(output, input.contiguous(),
+                                                            input_scales, input_azp)
+    return output, input_scales, input_azp
+
+def mx_awq_dequantize(qweight: torch.Tensor, scales: torch.Tensor,
+                   zeros: torch.Tensor, split_k_iters: int, thx: int,
+                   thy: int) -> torch.Tensor:
+    return torch.ops.sgl_kernel.mx_awq_dequantize.default(qweight, scales, zeros, split_k_iters,
+                                       thx, thy)
