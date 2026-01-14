@@ -163,6 +163,7 @@ from sglang.srt.utils import (
 
 from sgl_kernel import cutlass_scaled_batch_mm
 from sgl_kernel import scaled_int8_quant
+from sgl_kernel import fused_mla_absorb_rotary_emb
 
 _is_hip = is_hip()
 _is_cuda = is_cuda()
@@ -509,7 +510,10 @@ class DeepseekV2MLP(nn.Module):
                 f"Unsupported activation: {hidden_act}. "
                 "Only silu is supported for now."
             )
-        self.act_fn = SiluAndMul()
+        fused_quant = False
+        if quant_config is not None and quant_config.get_name() == "compressed_tensors":
+            fused_quant = True
+        self.act_fn = SiluAndMul(fused_quant=fused_quant)
 
     def forward(
         self,
@@ -1518,6 +1522,7 @@ class DeepseekV2AttentionMLA(nn.Module):
             has_fused_proj
             and not is_packed_weight
             and self.fused_qkv_a_proj_with_mqa.weight.dtype == torch.int8
+            and hasattr(self.fused_qkv_a_proj_with_mqa, "weight") and self.fused_qkv_a_proj_with_mqa.weight.dtype == torch.int8
         )
         self.qkv_proj_with_rope_is_fp8 = (
             has_fused_proj
@@ -1771,6 +1776,7 @@ class DeepseekV2AttentionMLA(nn.Module):
                 )
                 q = self.q_b_proj(q)[0].view(-1, self.num_local_heads, self.qk_head_dim)
             else:
+                q = q.contiguous()
                 q = self.q_a_layernorm(q)
                 q = self.q_b_proj(q)[0].view(-1, self.num_local_heads, self.qk_head_dim)
 
@@ -1879,6 +1885,15 @@ class DeepseekV2AttentionMLA(nn.Module):
         llama_4_scaling: Optional[torch.Tensor] = None,
     ):
         from sglang.srt.model_executor.cuda_graph_runner import get_is_capture_mode
+        if isinstance(hidden_states, tuple):
+            q_len = hidden_states[0].shape[0]
+            q_input = torch.empty([q_len, self.num_local_heads, self.kv_lora_rank + self.qk_rope_head_dim],
+                                dtype=torch.bfloat16, device=hidden_states[0].device)
+        else:
+            q_len = hidden_states.shape[0]
+            q_input = hidden_states.new_empty(
+                q_len, self.num_local_heads, self.kv_lora_rank + self.qk_rope_head_dim
+            )
 
         q_lora = None
         if self.q_lora_rank is not None:
@@ -1890,6 +1905,7 @@ class DeepseekV2AttentionMLA(nn.Module):
                     dim=-1,
                 )
             )
+            q = q.contiguous()
             k_nope = latent_cache[..., : self.kv_lora_rank]
 
             # overlap qk norm
@@ -1948,192 +1964,187 @@ class DeepseekV2AttentionMLA(nn.Module):
             k_nope = latent_cache[..., : self.kv_lora_rank]
             k_nope = self.kv_a_layernorm(k_nope).unsqueeze(1)
 
-        q_nope, q_pe = q.split([self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
-        k_pe = latent_cache[..., self.kv_lora_rank :].unsqueeze(1)
+        if self.q_lora_rank is not None and self.use_nsa is False:
+            assert q.dtype != torch.float16, "fused_mla_absorb_rotary_emb not support float16 !"
+            k_input = torch.empty(q_len, 1, self.kv_lora_rank + self.qk_rope_head_dim, dtype=torch.bfloat16, device=q_input.device)
+            v_input = torch.empty(q_len, 1, self.kv_lora_rank, dtype=torch.bfloat16, device=q_input.device)
+            fused_mla_absorb_rotary_emb(
+                q,
+                self.w_kc,
+                latent_cache.contiguous(),
+                self.rotary_emb.cos_sin_cache,
+                positions,
+                self.kv_a_layernorm.weight,
+                q_input,
+                k_input,
+                v_input,
+                q_len,
+                self.num_local_heads,
+                self.kv_lora_rank,
+                self.qk_rope_head_dim,
+                self.qk_nope_head_dim,
+            )
+            attn_output = self.attn_mqa(q_input, k_input, v_input, forward_batch)
+        else:
+            q_nope, q_pe = q.split([self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
+            k_pe = latent_cache[..., self.kv_lora_rank :].unsqueeze(1)
 
-        if self.use_deep_gemm_bmm:
-            q_nope_val, q_nope_scale, masked_m, expected_m, aligned_m = (
-                per_token_group_quant_mla_deep_gemm_masked_fp8(q_nope.transpose(0, 1))
-            )
-            q_nope_out = q_nope.new_empty(
-                (self.num_local_heads, aligned_m, self.kv_lora_rank)
-            )
-            deep_gemm_wrapper.grouped_gemm_nt_f8f8bf16_masked(
-                (q_nope_val, q_nope_scale),
-                (self.w_kc, self.w_scale_k),
-                q_nope_out,
-                masked_m,
-                expected_m,
-            )
-            q_nope_out = q_nope_out[:, :expected_m, :]
-        elif _is_hip:
-            # TODO(haishaw): add bmm_fp8 to ROCm
-            if _use_aiter_gfx95 and self.w_kc.dtype == torch.uint8:
-                x = q_nope.transpose(0, 1)
-                q_nope_out = torch.empty(
-                    x.shape[0],
-                    x.shape[1],
-                    self.w_kc.shape[2],
-                    device=x.device,
-                    dtype=torch.bfloat16,
+            if self.use_deep_gemm_bmm:
+                q_nope_val, q_nope_scale, masked_m, expected_m, aligned_m = (
+                    per_token_group_quant_mla_deep_gemm_masked_fp8(q_nope.transpose(0, 1))
                 )
-                batched_gemm_afp4wfp4_pre_quant(
-                    x,
-                    self.w_kc.transpose(-2, -1),
-                    self.w_scale_k.transpose(-2, -1),
-                    torch.bfloat16,
+                q_nope_out = q_nope.new_empty(
+                    (self.num_local_heads, aligned_m, self.kv_lora_rank)
+                )
+                deep_gemm_wrapper.grouped_gemm_nt_f8f8bf16_masked(
+                    (q_nope_val, q_nope_scale),
+                    (self.w_kc, self.w_scale_k),
                     q_nope_out,
+                    masked_m,
+                    expected_m,
                 )
-            else:
-                if _use_aiter_gfx95 and self.w_kc.dtype == torch.float8_e4m3fn:
-
-                    q_nope_out = batched_gemm_a8w8_a_per_token_group_prequant_w_per_batched_tensor_quant(
-                        X=q_nope,
-                        WQ=self.w_kc.transpose(-1, -2),
-                        w_scale=self.w_scale,
-                        group_size=128,
-                        YQ=None,  # allocate (B, M, N)
-                        transpose_bm=False,  # (B, M, N)
-                        transpose_bm_in=True,  # (M, B, K)
+                q_nope_out = q_nope_out[:, :expected_m, :]
+            elif _is_hip:
+                # TODO(haishaw): add bmm_fp8 to ROCm
+                if _use_aiter_gfx95 and self.w_kc.dtype == torch.uint8:
+                    x = q_nope.transpose(0, 1)
+                    q_nope_out = torch.empty(
+                        x.shape[0],
+                        x.shape[1],
+                        self.w_kc.shape[2],
+                        device=x.device,
                         dtype=torch.bfloat16,
                     )
-
-                else:
-                    q_nope_out = torch.bmm(
-                        q_nope.to(torch.bfloat16).transpose(0, 1),
-                        self.w_kc.to(torch.bfloat16) * self.w_scale,
+                    batched_gemm_afp4wfp4_pre_quant(
+                        x,
+                        self.w_kc.transpose(-2, -1),
+                        self.w_scale_k.transpose(-2, -1),
+                        torch.bfloat16,
+                        q_nope_out,
                     )
+                else:
+                    if _use_aiter_gfx95 and self.w_kc.dtype == torch.float8_e4m3fn:
 
-        elif self.w_kc.dtype == torch.float8_e4m3fn:
-            # fix bmm_fp8 error under cublas12.9 caused by bumpallocator, detail in pr#11612
-            q_nope_val, q_nope_scale = per_tensor_quant_mla_fp8(
-                q_nope.transpose(0, 1),
-                (
-                    torch.zeros((1,), dtype=torch.float32, device=q_nope.device)
-                    if _is_cublas_ge_129
-                    else zero_allocator.allocate(1)
-                ),
-            )
-            q_nope_out = bmm_fp8(
-                q_nope_val, self.w_kc, q_nope_scale, self.w_scale, torch.bfloat16
-            )
-        else:
-            q_nope_out = torch.bmm(q_nope.transpose(0, 1), self.w_kc)
+                        q_nope_out = batched_gemm_a8w8_a_per_token_group_prequant_w_per_batched_tensor_quant(
+                            X=q_nope,
+                            WQ=self.w_kc.transpose(-1, -2),
+                            w_scale=self.w_scale,
+                            group_size=128,
+                            YQ=None,  # allocate (B, M, N)
+                            transpose_bm=False,  # (B, M, N)
+                            transpose_bm_in=True,  # (M, B, K)
+                            dtype=torch.bfloat16,
+                        )
 
-        q_nope_out = q_nope_out.transpose(0, 1)
+                    else:
+                        q_nope_out = torch.bmm(
+                            q_nope.to(torch.bfloat16).transpose(0, 1),
+                            self.w_kc.to(torch.bfloat16) * self.w_scale,
+                        )
 
-        if enable_prefill_cp(forward_batch, self.nsa_enable_prefill_cp):
-            positions = cp_split_and_rebuild_position(forward_batch, positions)
-        if (
-            self.rotary_emb is not None
-            and (not self._fuse_rope_for_trtllm_mla(forward_batch))
-            and (not _use_aiter or not _is_gfx95_supported or self.use_nsa)
-        ):
-            q_pe, k_pe = self.rotary_emb(positions, q_pe, k_pe)
+            elif self.w_kc.dtype == torch.float8_e4m3fn:
+                # fix bmm_fp8 error under cublas12.9 caused by bumpallocator, detail in pr#11612
+                q_nope_val, q_nope_scale = per_tensor_quant_mla_fp8(
+                    q_nope.transpose(0, 1),
+                    (
+                        torch.zeros((1,), dtype=torch.float32, device=q_nope.device)
+                        if _is_cublas_ge_129
+                        else zero_allocator.allocate(1)
+                    ),
+                )
+                q_nope_out = bmm_fp8(
+                    q_nope_val, self.w_kc, q_nope_scale, self.w_scale, torch.bfloat16
+                )
+            else:
+                q_nope_out = torch.bmm(q_nope.transpose(0, 1), self.w_kc)
 
-        if enable_prefill_cp(forward_batch, self.nsa_enable_prefill_cp):
-            # support allgather+rerrange
-            k_nope, k_pe = self.rebuild_cp_kv_cache(
-                latent_cache, forward_batch, k_nope, k_pe
-            )
-        topk_indices = None
-        if q_lora is not None:
-            topk_indices = self.indexer(
-                x=hidden_states,
-                q_lora=q_lora,
-                positions=positions,
-                forward_batch=forward_batch,
-                layer_id=self.layer_id,
-            )
+            q_nope_out = q_nope_out.transpose(0, 1)
 
-        return (
-            q_pe,
-            k_pe,
-            q_nope_out,
-            k_nope,
-            forward_batch,
-            zero_allocator,
-            positions,
-            topk_indices,
-            llama_4_scaling,
-        )
+            if enable_prefill_cp(forward_batch, self.nsa_enable_prefill_cp):
+                positions = cp_split_and_rebuild_position(forward_batch, positions)
+            if (
+                self.rotary_emb is not None
+                and (not self._fuse_rope_for_trtllm_mla(forward_batch))
+                and (not _use_aiter or not _is_gfx95_supported or self.use_nsa)
+            ):
+                q_pe, k_pe = self.rotary_emb(positions, q_pe, k_pe)
+
+            if enable_prefill_cp(forward_batch, self.nsa_enable_prefill_cp):
+                # support allgather+rerrange
+                k_nope, k_pe = self.rebuild_cp_kv_cache(
+                    latent_cache, forward_batch, k_nope, k_pe
+                )
+            topk_indices = None
+            if q_lora is not None:
+                topk_indices = self.indexer(
+                    x=hidden_states,
+                    q_lora=q_lora,
+                    positions=positions,
+                    forward_batch=forward_batch,
+                    layer_id=self.layer_id,
+                )
+
+        # return (q_pe, k_pe, q_nope_out, k_nope, forward_batch, zero_allocator, positions, topk_indices,)
+                
+            if self.current_attention_backend in FORWARD_ABSORB_CORE_ATTENTION_BACKENDS:
+                extra_args = {}
+                if self._fuse_rope_for_trtllm_mla(forward_batch):
+                    extra_args = {
+                        "cos_sin_cache": self.rotary_emb.cos_sin_cache,
+                        "is_neox": self.rotary_emb.is_neox_style,
+                    }
+                if self.use_nsa:
+                    attn_output = self.attn_mqa(
+                                q_nope_out,
+                                k_nope,
+                                k_nope,
+                                forward_batch,
+                                q_rope=q_pe,
+                                k_rope=k_pe,
+                                **extra_args,
+                                **(dict(topk_indices=topk_indices) if topk_indices is not None else {}),
+                    )
+                else:
+                    attn_output = self.attn_mqa(
+                            q_nope_out,
+                            k_nope,
+                            k_nope,
+                            forward_batch,
+                            q_rope=q_pe,
+                            k_rope=k_pe,
+                            **extra_args,
+                        )
+            else:
+                if _use_aiter_gfx95:
+                    cos = self.rotary_emb.cos_cache
+                    sin = self.rotary_emb.sin_cache
+                    q, k = fused_qk_rope_cat(
+                        q_nope_out,
+                        q_pe,
+                        k_nope,
+                        k_pe,
+                        positions,
+                        cos,
+                        sin,
+                        self.rotary_emb.is_neox_style,
+                    )
+                else:
+                    q = torch.cat([q_nope_out, q_pe], dim=-1)
+                    k = torch.cat([k_nope, k_pe], dim=-1)
+
+                attn_output = self.attn_mqa(
+                    q,
+                    k,
+                    k_nope,
+                    forward_batch,
+                    **(dict(topk_indices=topk_indices) if topk_indices is not None else {}),
+                )
+
+        return attn_output, zero_allocator
 
     def forward_absorb_core(
-        self,
-        q_pe,
-        k_pe,
-        q_nope_out,
-        k_nope,
-        forward_batch,
-        zero_allocator,
-        positions,
-        topk_indices,
-        llama_4_scaling,
+        self, attn_output, zero_allocator
     ):
-        save_kv_cache = True
-
-        if self.current_attention_backend in FORWARD_ABSORB_CORE_ATTENTION_BACKENDS:
-            extra_args = {}
-            if self._fuse_rope_for_trtllm_mla(forward_batch):
-                extra_args = {
-                    "cos_sin_cache": self.rotary_emb.cos_sin_cache,
-                    "is_neox": self.rotary_emb.is_neox_style,
-                    "llama_4_scaling": llama_4_scaling,
-                }
-
-            attn_output = self.attn_mqa(
-                q_nope_out,
-                k_nope,
-                k_nope,
-                forward_batch,
-                q_rope=q_pe,
-                k_rope=k_pe,
-                **extra_args,
-                **(dict(topk_indices=topk_indices) if topk_indices is not None else {}),
-            )
-        else:
-            if _use_aiter_gfx95:
-                cos = self.rotary_emb.cos_cache
-                sin = self.rotary_emb.sin_cache
-
-                kv_cache_dtype = (
-                    fp8_dtype if self.kv_cache_dtype == "fp8_e4m3" else q_nope_out.dtype
-                )
-
-                q, _, _, k = fused_qk_rope_cat_and_cache_mla(
-                    q_nope_out,
-                    q_pe,
-                    k_nope,
-                    k_pe,
-                    forward_batch.token_to_kv_pool.get_key_buffer(
-                        self.attn_mqa.layer_id
-                    ),
-                    forward_batch.out_cache_loc,
-                    positions,
-                    cos,
-                    sin,
-                    self.attn_mqa.k_scale,
-                    self.rotary_emb.is_neox_style,
-                    q_out_dtype=kv_cache_dtype,
-                )
-
-                save_kv_cache = False
-            else:
-                q = torch.cat([q_nope_out, q_pe], dim=-1)
-                k = torch.cat([k_nope, k_pe], dim=-1)
-
-            # Apply llama 4 scaling if provided
-            if llama_4_scaling is not None:
-                q *= llama_4_scaling
-
-            attn_output = self.attn_mqa(
-                q,
-                k,
-                k_nope,
-                forward_batch,
-                save_kv_cache=save_kv_cache,
-                **(dict(topk_indices=topk_indices) if topk_indices is not None else {}),
-            )
         attn_output = attn_output.view(-1, self.num_local_heads, self.kv_lora_rank)
 
         if self.use_deep_gemm_bmm:
@@ -2787,6 +2798,7 @@ class DeepseekV2DecoderLayer(nn.Module):
         self.nsa_enable_prefill_cp = is_nsa_enable_prefill_cp()
         self.layer_id = layer_id
         self.is_nextn = is_nextn
+        self.use_nsa  = is_deepseek_nsa(config)
         self.self_attn = DeepseekV2AttentionMLA(
             config=config,
             hidden_size=self.hidden_size,
@@ -2844,9 +2856,13 @@ class DeepseekV2DecoderLayer(nn.Module):
                 tp_size=mlp_tp_size,
             )
 
-        self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        packed_quant = True if self.is_layer_sparse else False
+        fused_quant = False
+        if quant_config is not None and quant_config.get_name() == "compressed_tensors" and self.use_nsa is False:
+            fused_quant = True
+        self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps, fused_quant=fused_quant)
         self.post_attention_layernorm = RMSNorm(
-            config.hidden_size, eps=config.rms_norm_eps
+            config.hidden_size, eps=config.rms_norm_eps, fused_quant=fused_quant, packed_quant=packed_quant
         )
 
         if self.nsa_enable_prefill_cp:

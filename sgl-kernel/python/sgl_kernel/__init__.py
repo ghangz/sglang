@@ -33,6 +33,8 @@ from sgl_kernel.elementwise import (
     rotary_embedding,
     silu_and_mul,
     timestep_embedding,
+    rms_norm_dynamic_per_token_quant_custom,
+    fused_mla_absorb_rotary_emb,
 )
 from sgl_kernel.expert_specialization import (
     es_fp8_blockwise_scaled_grouped_mm,
@@ -111,7 +113,8 @@ from sgl_kernel.quantization import (
     ggml_mul_mat_a8,
     ggml_mul_mat_vec_a8,
     scaled_int8_quant,   
-    mx_awq_dequantize     
+    mx_awq_dequantize,
+    fused_silu_mul_dq_quant,  
 )
 from sgl_kernel.sampling import (
     # min_p_sampling_from_probs,

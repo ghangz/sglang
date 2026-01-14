@@ -435,3 +435,51 @@ def timestep_embedding(
     return torch.ops.sgl_kernel.timestep_embedding(
         t, output, dim, flip_sin_to_cos, downscale_freq_shift, scale, max_period
     )
+
+def rms_norm_dynamic_per_token_quant_custom(input: torch.Tensor,
+                                                   weight: torch.Tensor,
+                                                   var_epsilon: float,
+                                                   quant_dtype: torch.dtype,
+                                                   scale_ub: torch.Tensor = None,
+                                                   residual: torch.Tensor = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] :
+    out = torch.zeros_like(input, dtype=torch.int8)
+    out_bf16 = torch.zeros_like(input, dtype=torch.bfloat16)
+    scales = torch.empty((input.numel() // input.shape[-1], 1),
+                         device=input.device,
+                         dtype=torch.float32)
+    torch.ops.sgl_kernel.rms_norm_dynamic_per_token_quant_custom.default(out, out_bf16, input, weight, scales, var_epsilon, scale_ub, residual)
+    return out, out_bf16, scales
+
+
+def fused_mla_absorb_rotary_emb(
+    q: torch.Tensor,
+    w_kc: torch.Tensor,
+    latent_cache: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    positions: torch.Tensor,
+    norm_weight: torch.Tensor,
+    q_input: torch.Tensor,
+    k_input: torch.Tensor,
+    v_input: torch.Tensor,
+    q_len: int = None,
+    num_local_heads: int = None,
+    kv_lora_rank: int = None,
+    qk_rope_head_dim: int = None,
+    qk_nope_head_dim: int = None,
+) -> int :
+    return torch.ops.sgl_kernel.fused_mla_absorb_rotary_emb.default(
+        q, 
+        w_kc,
+        latent_cache,
+        cos_sin_cache,
+        positions,
+        norm_weight,
+        q_input,
+        k_input,
+        v_input,
+        q_len,
+        num_local_heads,
+        kv_lora_rank,
+        qk_rope_head_dim,
+        qk_nope_head_dim,
+    )

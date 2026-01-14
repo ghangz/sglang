@@ -50,6 +50,7 @@ _is_xpu = is_xpu()
 
 if _is_cuda or _is_xpu:
     from sgl_kernel import gelu_and_mul, gelu_tanh_and_mul, silu_and_mul
+    from sgl_kernel import fused_silu_mul_dq_quant
 elif _is_hip:
     from sgl_kernel import gelu_and_mul, gelu_quick, gelu_tanh_and_mul, silu_and_mul
 
@@ -60,8 +61,9 @@ logger = logging.getLogger(__name__)
 
 
 class SiluAndMul(CustomOp):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, fused_quant=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fused_quant = fused_quant
         if get_global_server_args().rl_on_policy_target is not None:
             self._forward_method = self.forward_native
 
@@ -70,11 +72,19 @@ class SiluAndMul(CustomOp):
         return F.silu(x[..., :d]) * x[..., d:]
 
     def forward_cuda(self, x: torch.Tensor) -> torch.Tensor:
-        d = x.shape[-1] // 2
-        output_shape = x.shape[:-1] + (d,)
-        out = torch.empty(output_shape, dtype=x.dtype, device=x.device)
-        silu_and_mul(x, out)
-        return out
+        if self.fused_quant:
+            output,scale = fused_silu_mul_dq_quant(x)
+            return (output,scale)
+        else:
+            d = x.shape[-1] // 2
+            output_shape = x.shape[:-1] + (d,)
+            out = torch.empty(output_shape, dtype=x.dtype, device=x.device)
+            # Note: sglang 0.4.8 not support float16
+            if x.dtype == torch.float16:
+                torch.ops._C.silu_and_mul(out, x)
+            else:
+                silu_and_mul(x, out)
+            return out
 
     def forward_cpu(self, x: torch.Tensor) -> torch.Tensor:
         if _is_cpu_amx_available:

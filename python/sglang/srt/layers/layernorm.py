@@ -66,6 +66,8 @@ if _is_cuda or _is_xpu:
         gemma_rmsnorm,
         rmsnorm,
     )
+from sgl_kernel import rms_norm_dynamic_per_token_quant_custom
+from mcoplib.custom_ops import fused_add_rms_norm_dynamic_per_token_quant_padding_output
 if _use_aiter:
     from aiter import rmsnorm2d_fwd as rms_norm
     from aiter import rmsnorm2d_fwd_with_add as fused_add_rms_norm
@@ -88,6 +90,9 @@ class RMSNorm(CustomOp):
         fp32_residual: bool = False,
         weight_dtype: Optional = None,
         override_orig_dtype: Optional = None,
+        fused_quant: bool = False,
+        packed_quant: bool = False,
+        packed_size: int = 3840
     ) -> None:
         super().__init__()
         self.cast_x_before_out_mul = cast_x_before_out_mul
@@ -101,30 +106,61 @@ class RMSNorm(CustomOp):
         )
         if _use_aiter:
             self._forward_method = self.forward_aiter
+        self.fused_quant = fused_quant
+        self.packed_quant = packed_quant
+        self.packed_size = packed_size
 
     def forward_cuda(
         self,
         x: torch.Tensor,
         residual: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        if self.variance_size_override is not None:
-            return self.forward_native(x, residual)
-        if is_batch_invariant_mode_enabled():
-            if (
-                residual is not None
-                or get_global_server_args().rl_on_policy_target == "fsdp"
-            ):
+        if self.fused_quant:
+            if self.packed_quant:
+                # if global_server_args_dict["deepep_mode"] == "low_latency" and residual is not None:
+                #     packed_output, residual, no_quant_output, int8_out, scales = fused_add_rms_norm_dynamic_per_token_quant_padding_output(
+                #         x,
+                #         residual,
+                #         self.weight.data,
+                #         self.packed_size,
+                #         self.variance_epsilon
+                #     )
+                #     return (packed_output, no_quant_output, (int8_out, scales)), residual
+                # else:
+                output, out_bf16, scale = rms_norm_dynamic_per_token_quant_custom(x, self.weight.data, self.variance_epsilon, quant_dtype = torch.int8, residual = residual)
+                if residual is not None:
+                    # return (out_bf16, (output, scale)), residual
+                    return out_bf16, residual
+                else:
+                    # return (out_bf16, (output, scale))    
+                    return out_bf16
+            else:
+                output, output_bf16, scale = rms_norm_dynamic_per_token_quant_custom(x, self.weight.data, self.variance_epsilon, quant_dtype = torch.int8, residual = residual)
+                if residual is not None:
+                    return (output, scale, output_bf16), residual
+                else:
+                    return (output, scale, output_bf16)
+        else:
+            if self.variance_size_override is not None:
                 return self.forward_native(x, residual)
-            return rms_norm_batch_invariant(
-                x,
-                self.weight.data,
-                self.variance_epsilon,
-            )
-        if residual is not None:
-            fused_add_rmsnorm(x, residual, self.weight.data, self.variance_epsilon)
-            return x, residual
-        out = rmsnorm(x, self.weight.data, self.variance_epsilon)
-        return out
+
+            if is_batch_invariant_mode_enabled():
+                if (
+                    residual is not None
+                    or get_global_server_args().rl_on_policy_target == "fsdp"
+                ):
+                    return self.forward_native(x, residual)
+                return rms_norm_batch_invariant(
+                    x,
+                    self.weight.data,
+                    self.variance_epsilon,
+                )
+
+            if residual is not None:
+                fused_add_rmsnorm(x, residual, self.weight.data, self.variance_epsilon)
+                return x, residual
+            out = rmsnorm(x, self.weight.data, self.variance_epsilon)
+            return out
 
     def forward_npu(
         self,
