@@ -400,6 +400,9 @@ class ForwardBatch:
     # For hidden states before normal
     return_hidden_states_before_norm: bool = False
 
+    #check nsa ds-v3.2
+    is_nsa: bool = False
+ 
     @classmethod
     def init_new(
         cls,
@@ -549,6 +552,10 @@ class ForwardBatch:
         # Init lora information
         if model_runner.server_args.enable_lora:
             model_runner.lora_manager.prepare_lora_batch(ret)
+        
+        #check nsa ds-v3.2
+        from sglang.srt.configs.model_config import is_deepseek_nsa
+        ret.is_nsa = is_deepseek_nsa(model_runner.model_config.hf_config)
 
         return ret
 
@@ -837,11 +844,17 @@ class ForwardBatch:
 
         bs = self.batch_size
 
+        is_idle = False
+        if self.forward_mode.is_idle() and not self.is_nsa:
+            is_idle = True
+
+        is_idle = self.forward_mode.is_idle() and self.is_nsa
         if (
             self.forward_mode.is_decode()
             or self.forward_mode.is_target_verify()
             or self.forward_mode.is_draft_extend(include_v2=True)
-            or self.forward_mode.is_idle()
+            or is_idle
+            # or self.forward_mode.is_idle()
         ):
             if self.is_extend_in_batch and dp_padding_mode.is_max_len():
                 setattr(self, "_original_forward_mode", self.forward_mode)

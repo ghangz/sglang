@@ -32,7 +32,7 @@ constexpr size_t kSmem = static_cast<size_t>(SGL_TOPK_DYNAMIC_SMEM_BYTES);
 constexpr size_t kSmem = 48 * 1024;  // bytes
 #endif
 #else
-constexpr size_t kSmem = 32 * 1024 * sizeof(uint32_t);  // 128KB (bytes)
+constexpr size_t kSmem = 8 * 1024 * sizeof(uint32_t);  // 32KB (bytes)
 #endif
 
 struct FastTopKParams {

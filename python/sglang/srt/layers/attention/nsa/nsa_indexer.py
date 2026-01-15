@@ -37,6 +37,9 @@ from sglang.srt.model_executor.cuda_graph_runner import get_is_capture_mode
 from sglang.srt.model_executor.forward_batch_info import ForwardBatch
 from sglang.srt.server_args import get_global_server_args
 
+import logging
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from sglang.srt.mem_cache.memory_pool import NSATokenToKVPool
 
@@ -84,7 +87,7 @@ class BaseIndexerMetadata(ABC):
 
 def rotate_activation(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.bfloat16
-    from sgl_kernel import hadamard_transform
+    from fast_hadamard_transform import hadamard_transform
 
     hidden_size = x.size(-1)
     assert (
@@ -170,10 +173,13 @@ class Indexer(CustomOp):
         self.softmax_scale = self.head_dim**-0.5
 
     @torch.compile(dynamic=True)
-    def _get_logits_head_gate(self, x: torch.Tensor, q_scale: torch.Tensor):
+    def _get_logits_head_gate(self, x: torch.Tensor, q_scale: Optional[torch.Tensor] = None):
         weights, _ = self.weights_proj(x.float())
         weights = weights * self.n_heads**-0.5
-        weights = weights.unsqueeze(-1) * q_scale * self.softmax_scale
+        if q_scale is None:  # bf16
+            weights = weights.unsqueeze(-1) * self.softmax_scale
+        else:
+            weights = weights.unsqueeze(-1) * q_scale * self.softmax_scale
         return weights
 
     def _get_q_k_bf16(
@@ -313,14 +319,15 @@ class Indexer(CustomOp):
         assert len(kv_cache_fp8.shape) == 2
         block_kv = 64
         num_heads_kv = 1
-        head_dim_with_sf = 132
+        head_dim_with_sf = 132 # fp8(128) + scale(4)
+        head_dim_with_sf = 128  # bf16(128)
         kv_cache_fp8 = kv_cache_fp8.view(
             kv_cache_fp8.shape[0], block_kv, num_heads_kv, head_dim_with_sf
         )
         assert len(weights.shape) == 3
         weights = weights.squeeze(2)
 
-        logits = deep_gemm.fp8_paged_mqa_logits(
+        logits = deep_gemm.bf16_paged_mqa_logits(
             q_fp8,
             kv_cache_fp8,
             weights,
@@ -393,7 +400,12 @@ class Indexer(CustomOp):
             seq_len = forward_batch.seq_lens_cpu[i].item()
             assert isinstance(seq_len, int)
             # Use fused Triton kernel to get both K and scale in a single call
-            k_fp8, k_scale = forward_batch.token_to_kv_pool.get_index_k_scale_buffer(
+            # k_fp8, k_scale = forward_batch.token_to_kv_pool.get_index_k_scale_buffer(
+            #     layer_id,
+            #     seq_len,
+            #     block_tables[i],
+            # )
+            k_fp8 = forward_batch.token_to_kv_pool.get_index_k_continuous(
                 layer_id,
                 seq_len,
                 block_tables[i],
@@ -404,7 +416,7 @@ class Indexer(CustomOp):
             )
             ke = ks + seq_lens_expanded[q_offset : q_offset + extend_seq_len]
             k_fp8_list.append(k_fp8)
-            k_scale_list.append(k_scale)
+            # k_scale_list.append(k_scale)
             ks_list.append(ks)
             ke_list.append(ke)
 
@@ -412,9 +424,11 @@ class Indexer(CustomOp):
             q_offset += extend_seq_len
             k_offset += seq_len
 
-        k_fp8 = torch.cat(k_fp8_list, dim=0).view(torch.float8_e4m3fn)
-        k_scale = torch.cat(k_scale_list, dim=0).view(torch.float32).squeeze(-1)
-        kv_fp8 = (k_fp8, k_scale)
+        k_fp8 = torch.cat(k_fp8_list, dim=0).view(torch.bfloat16)
+        kv_fp8 = k_fp8
+        # k_fp8 = torch.cat(k_fp8_list, dim=0).view(torch.float8_e4m3fn)
+        # k_scale = torch.cat(k_scale_list, dim=0).view(torch.float32).squeeze(-1)
+        # kv_fp8 = (k_fp8, k_scale)
         ks = torch.cat(ks_list, dim=0)
         ke = torch.cat(ke_list, dim=0)
 
@@ -437,9 +451,9 @@ class Indexer(CustomOp):
 
         # Check if we need to chunk to avoid OOM
         need_chunk, free_mem = self._should_chunk_mqa_logits(q_offset, k_offset, device)
-
+        need_chunk = False
         if not need_chunk:
-            logits = deep_gemm.fp8_mqa_logits(
+            logits = deep_gemm.bf16_mqa_logits(
                 q_fp8[:q_offset],
                 kv_fp8,
                 weights[:q_offset],
@@ -492,7 +506,7 @@ class Indexer(CustomOp):
         while start < q_offset:
             end = min(start + max_rows, q_offset)
 
-            logits_chunk = deep_gemm.fp8_mqa_logits(
+            logits_chunk = deep_gemm.bf16_mqa_logits(
                 q_fp8[start:end],
                 kv_fp8,
                 weights[start:end],
@@ -538,7 +552,7 @@ class Indexer(CustomOp):
         positions: torch.Tensor,
         forward_batch: ForwardBatch,
         layer_id: int,
-        act_quant,
+        # act_quant,
         enable_dual_stream: bool,
         metadata: BaseIndexerMetadata,
         return_indices: bool = True,
@@ -547,7 +561,9 @@ class Indexer(CustomOp):
 
         # Fast path: only compute and store k cache, skip all q and weights ops
         key = self._get_k_bf16(x, positions, enable_dual_stream)
-        k_fp8, k_scale = act_quant(key, self.block_size, self.scale_fmt)
+        # k_fp8, k_scale = act_quant(key, self.block_size, self.scale_fmt)
+        k_fp8 = key
+        k_scale = None
 
         if not forward_batch.out_cache_loc.is_contiguous():
             forward_batch.out_cache_loc = forward_batch.out_cache_loc.contiguous()
@@ -728,8 +744,8 @@ class Indexer(CustomOp):
         topk: int,
         layer_id: int,
     ) -> Optional[torch.Tensor]:
-        if not is_npu():
-            from sglang.srt.layers.attention.nsa.tilelang_kernel import fp8_index
+        # if not is_npu():
+        #     from sglang.srt.layers.attention.nsa.tilelang_kernel import fp8_index
 
         page_size = forward_batch.token_to_kv_pool.page_size
         assert page_size == 64, "only support page size 64"
@@ -812,10 +828,10 @@ class Indexer(CustomOp):
         layer_id: int,
         return_indices: bool = True,
     ) -> Optional[torch.Tensor]:
-        if is_hip():
-            from sglang.srt.layers.attention.nsa.tilelang_kernel import act_quant
-        elif not is_npu():
-            from sglang.srt.layers.attention.nsa.triton_kernel import act_quant
+        # if is_hip():
+        #     from sglang.srt.layers.attention.nsa.tilelang_kernel import act_quant
+        # elif not is_npu():
+        #     from sglang.srt.layers.attention.nsa.triton_kernel import act_quant
 
         if TYPE_CHECKING:
             assert isinstance(forward_batch.token_to_kv_pool, NSATokenToKVPool)
@@ -851,7 +867,7 @@ class Indexer(CustomOp):
                 positions,
                 forward_batch,
                 layer_id,
-                act_quant,
+                # act_quant,
                 enable_dual_stream,
                 metadata,
                 return_indices,
@@ -861,17 +877,22 @@ class Indexer(CustomOp):
             q_lora, x, positions, enable_dual_stream, forward_batch=forward_batch
         )
 
-        if enable_dual_stream:
-            current_stream = torch.cuda.current_stream()
-            self.alt_stream.wait_stream(current_stream)
+        q_fp8 = query
+        q_scale = None
+        k_fp8 = key # bf16
+        k_scale = None
 
-            q_fp8, q_scale = act_quant(query, self.block_size, self.scale_fmt)
-            with torch.cuda.stream(self.alt_stream):
-                k_fp8, k_scale = act_quant(key, self.block_size, self.scale_fmt)
-            current_stream.wait_stream(self.alt_stream)
-        else:
-            q_fp8, q_scale = act_quant(query, self.block_size, self.scale_fmt)
-            k_fp8, k_scale = act_quant(key, self.block_size, self.scale_fmt)
+        # if enable_dual_stream:
+        #     current_stream = torch.cuda.current_stream()
+        #     self.alt_stream.wait_stream(current_stream)
+
+        #     q_fp8, q_scale = act_quant(query, self.block_size, self.scale_fmt)
+        #     with torch.cuda.stream(self.alt_stream):
+        #         k_fp8, k_scale = act_quant(key, self.block_size, self.scale_fmt)
+        #     current_stream.wait_stream(self.alt_stream)
+        # else:
+        #     q_fp8, q_scale = act_quant(query, self.block_size, self.scale_fmt)
+        #     k_fp8, k_scale = act_quant(key, self.block_size, self.scale_fmt)
 
         # k_fp8: (seq_len, head_dim) fp8_e4m3fn
         # k_buffer: (num_total_tokens + page_size, head_dim) fp8_e4m3fn
