@@ -11,7 +11,7 @@ if torch.version.cuda is not None:
 try:
     import mcoplib._C
 except ImportError as e:
-        logger.warning("Failed to import from mcoplib._C with %r", e)
+    print("Failed to import from mcoplib._C with %r", e)
 
 try:
     import mcoplib.sgl_kernel as sglang_kernel
