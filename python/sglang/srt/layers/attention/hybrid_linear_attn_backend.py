@@ -1355,17 +1355,35 @@ class HybridLinearAttnBackend(AttentionBackend):
         src_state_indices = intermediate_state_indices[valid_mask].to(
             torch.int64
         )  # [N]
+
         last_steps = accepted_steps[valid_mask].to(torch.int64)  # [N]
 
-        # scatter into ssm_states at the chosen cache lines
-        ssm_states[:, dst_state_indices, :] = intermediate_state_cache[
-            :, src_state_indices, last_steps
-        ].to(ssm_states.dtype, copy=False)
+        if dst_state_indices.numel() > 0:
+            chunk = 256
+            num_valid = dst_state_indices.numel()
 
-        # Scatter into conv_states at the chosen cache lines
-        conv_states[:, dst_state_indices, :] = intermediate_conv_window_cache[
-            :, src_state_indices, last_steps
-        ].to(conv_states.dtype, copy=False)
+            # SSM state updates
+            for i in range(0, num_valid, chunk):
+                dst_idx  = dst_state_indices[i : i + chunk]
+                src_idx  = src_state_indices[i : i + chunk]
+                steps = last_steps[i : i + chunk]
+                # per (cache line, step)
+                for j in range(src_idx.numel()):
+                    src_ci = src_idx[j].item()
+                    dst_ci = dst_idx[j].item()
+                    st = steps[j].item()
+                    ssm_states[:, dst_ci, :].copy_(intermediate_state_cache[:, src_ci, st].to(ssm_states.dtype, copy=False))
+
+            # Conv window updates
+            for i in range(0, num_valid, chunk):
+                dst_idx  = dst_state_indices[i : i + chunk]
+                src_idx  = src_state_indices[i : i + chunk]
+                steps = last_steps[i : i + chunk]
+                for j in range(src_idx.numel()):
+                    src_ci = src_idx[j].item()
+                    dst_ci = dst_idx[j].item()
+                    st = steps[j].item()
+                    conv_states[:, dst_ci, :].copy_(intermediate_conv_window_cache[:, src_ci, st].to(conv_states.dtype, copy=False))
 
         # Track indices used for tracking mamba states for prefix cache
         if mamba_track_indices is not None:
