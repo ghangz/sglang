@@ -72,6 +72,7 @@ from sglang.srt.utils import (
     require_gathered_buffer,
     require_mlp_sync,
     require_mlp_tp_gather,
+    get_int_env_var,
 )
 from sglang.srt.utils.patch_torch import monkey_patch_torch_compile
 from sglang.srt.utils.torch_memory_saver_adapter import TorchMemorySaverAdapter
@@ -86,6 +87,8 @@ except ImportError:
 _is_hip = is_hip()
 
 logger = logging.getLogger(__name__)
+
+g_enable_small_bs_cuda_graph_sum = bool(get_int_env_var("SGLANG_ENABLE_SMALL_BS_CUDA_GRAPH_SUM", 0))
 
 if TYPE_CHECKING:
     from sglang.srt.model_executor.model_runner import ModelRunner
@@ -228,7 +231,7 @@ def get_batch_sizes_to_capture(model_runner: ModelRunner):
         mul_base *= get_attention_tp_size()
 
     sum_len_bs = []
-    if server_args.speculative_algorithm is None:
+    if server_args.speculative_algorithm is None or g_enable_small_bs_cuda_graph_sum:
         sum_len_bs = [bs for bs in capture_bs if (bs < 10 and bs % mul_base != 0)]
     capture_bs = sum_len_bs + [bs for bs in capture_bs if bs % mul_base == 0]
 
