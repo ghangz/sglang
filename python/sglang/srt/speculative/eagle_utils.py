@@ -54,7 +54,6 @@ def build_tree_kernel_efficient(
     topk: int,
     spec_steps: int,
     num_verify_tokens: int,
-    bs_q: int,
     tree_mask_mode: TreeMaskMode = TreeMaskMode.FULL_MASK,
     tree_mask_buf: Optional[torch.Tensor] = None,
     position_buf: Optional[torch.Tensor] = None,
@@ -93,30 +92,14 @@ def build_tree_kernel_efficient(
             device=device,
         )
     elif tree_mask_mode == TreeMaskMode.FULL_MASK:
-        if bs != bs_q:
-            seq_lens1 = torch.full((bs_q,), 1, dtype=torch.int32)
-            seq_lens1[:bs].copy_(seq_lens)
-            seq_lens_sum = seq_lens1.sum()
-            # bs = bs_q
-            tree_mask = torch.full(
-                (
-                    seq_lens_sum * num_verify_tokens
-                    + num_verify_tokens * num_verify_tokens * bs_q,
-                ),
-                True,
-                device=device,
-            )
-            # size = seq_lens_sum * num_verify_tokens + num_verify_tokens * num_verify_tokens * bs_q
-            # logger.info(f"{seq_lens_sum=}, {num_verify_tokens=}, {bs_q=}, {size=}")
-        else:
-            tree_mask = torch.full(
-                (
-                    seq_lens_sum * num_verify_tokens
-                    + num_verify_tokens * num_verify_tokens * bs,
-                ),
-                True,
-                device=device,
-            )
+        tree_mask = torch.full(
+            (
+                seq_lens_sum * num_verify_tokens
+                + num_verify_tokens * num_verify_tokens * bs,
+            ),
+            True,
+            device=device,
+        )
     else:
         raise NotImplementedError(f"Invalid tree mask: {tree_mask_mode=}")
 
@@ -165,20 +148,7 @@ def build_tree_kernel_efficient(
             num_verify_tokens,
             tree_mask_mode,
         )
-        # if bs != bs_q:
-        #     # seq_lens1 = torch.full((bs_q,), 1, dtype=torch.int32)
-        #     # seq_lens1[:bs].copy_(seq_lens)
-        #     seq_lens_sum = seq_lens.sum() + (bs_q - bs)
-        #     tree_mask1 = torch.full(
-        #             (
-        #                 seq_lens_sum * num_verify_tokens
-        #                 + num_verify_tokens * num_verify_tokens * bs_q,
-        #             ),
-        #             True,
-        #             device=device,
-        #         )
-        #     size = seq_lens.sum() * num_verify_tokens + num_verify_tokens * num_verify_tokens * bs
-        #     tree_mask1[:size].copy_(tree_mask)
+
     return (
         tree_mask,
         positions,
