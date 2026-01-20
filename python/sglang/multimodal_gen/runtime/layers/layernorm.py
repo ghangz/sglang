@@ -12,7 +12,8 @@ import flashinfer
 from flashinfer import (
         rmsnorm,
     )
-from sgl_kernel import fused_add_rmsnorm
+# from sgl_kernel import fused_add_rmsnorm
+from flashinfer.norm import fused_add_rmsnorm
 
 from sglang.jit_kernel.norm import can_use_fused_inplace_qknorm, fused_inplace_qknorm
 from sglang.multimodal_gen.runtime.layers.custom_op import CustomOp

@@ -9,7 +9,8 @@ from typing import Any
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from sgl_kernel import silu_and_mul
+# from sgl_kernel import silu_and_mul
+from flashinfer.activation import silu_and_mul
 
 # TODO (will): remove this dependency
 from sglang.multimodal_gen.runtime.layers.custom_op import CustomOp
