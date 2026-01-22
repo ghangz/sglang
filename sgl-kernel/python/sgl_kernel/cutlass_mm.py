@@ -59,7 +59,9 @@ def cutlass_scaled_mm(a: torch.Tensor,
         import mctlassEx
         stream_ptr = torch.cuda.current_stream().cuda_stream
         mctlass_op = mctlassEx.mctlassExHandleWrapper()
-        mctlass_op.mctlass_w8a8_scaled_mm_azp(a, b, out, scale_a, scale_b.T,None, None,None, stream_ptr)
+        if bias is not None and bias.ndim == 1:
+            bias = bias.unsqueeze(0)
+        mctlass_op.mctlass_w8a8_scaled_mm_azp(a, b, out, scale_a, scale_b.T, bias, None,None, stream_ptr)
     else:
         torch.ops.sgl_kernel.cutlass_scaled_mm.default(out, a, b, scale_a, scale_b, bias)
 
