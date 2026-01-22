@@ -66,6 +66,8 @@ if TYPE_CHECKING:
 
 _is_npu = is_npu()
 
+import logging
+logger = logging.getLogger(__name__)
 
 class ForwardMode(IntEnum):
     # Extend a sequence. The KV cache of the beginning part of the sequence is already computed (e.g., system prompt).
@@ -492,6 +494,10 @@ class ForwardBatch:
                 dtype=torch.int64,
                 device=device,
             )
+        
+        #check nsa ds-v3.2
+        from sglang.srt.configs.model_config import is_deepseek_nsa
+        ret.is_nsa = is_deepseek_nsa(model_runner.model_config.hf_config)
 
         if ret.forward_mode.is_idle():
             ret.positions = torch.empty((0,), dtype=torch.int64, device=device)
@@ -552,10 +558,6 @@ class ForwardBatch:
         # Init lora information
         if model_runner.server_args.enable_lora:
             model_runner.lora_manager.prepare_lora_batch(ret)
-        
-        #check nsa ds-v3.2
-        from sglang.srt.configs.model_config import is_deepseek_nsa
-        ret.is_nsa = is_deepseek_nsa(model_runner.model_config.hf_config)
 
         return ret
 
@@ -848,7 +850,6 @@ class ForwardBatch:
         if self.forward_mode.is_idle() and not self.is_nsa:
             is_idle = True
 
-        is_idle = self.forward_mode.is_idle() and self.is_nsa
         if (
             self.forward_mode.is_decode()
             or self.forward_mode.is_target_verify()
