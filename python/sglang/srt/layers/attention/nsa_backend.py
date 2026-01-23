@@ -1404,7 +1404,7 @@ class NativeSparseAttnBackend(
         # indices shape must be (s_q, h_kv=1, topk), keep h_kv=1 unchanged
         indices_input = page_table_1.unsqueeze(1)
 
-        flashmla_opt = get_bool_env_var("MX_ENABLE_FLASH_MLA_OPT", default="true")
+        flashmla_opt = get_bool_env_var("MX_ENABLE_FLASH_MLA_OPT", default="false")
 
         if flashmla_opt:
             prefill_mask = (page_table_1 != -1).all(dim=-1, keepdim=True)
@@ -1460,7 +1460,7 @@ class NativeSparseAttnBackend(
         assert (
             indices.shape[-1] == self.nsa_index_topk
         )  # requirement of FlashMLA decode kernel
-        flashmla_opt = get_bool_env_var("MX_ENABLE_FLASH_MLA_OPT", default="true")
+        flashmla_opt = get_bool_env_var("MX_ENABLE_FLASH_MLA_OPT", default="false")
 
         if flashmla_opt:
             decode_mask = (indices != -1).all(dim=-1, keepdim=True)
