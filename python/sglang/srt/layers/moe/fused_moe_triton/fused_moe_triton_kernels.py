@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 import torch
 import triton
 import triton.language as tl
+import math
 
 from sglang.srt.layers.quantization.fp8_kernel import (
     per_token_group_quant_fp8,
@@ -309,6 +310,21 @@ def fused_moe_kernel_gptq_awq(
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
+@triton.heuristics(
+    {
+        "UPGRADE": lambda args: math.ceil((args["EM"] * args["N"]) / (args["BLOCK_SIZE_M"] * args["BLOCK_SIZE_N"])).bit_length() > 31,
+    }
+)
+@triton.heuristics(
+    {
+        "UPGRADE_A_OFFS": lambda args: (args["num_valid_tokens"] // args["top_k"] * args["stride_am"] + args["BLOCK_SIZE_K"] * args["stride_ak"]).bit_length() > 31,
+    }
+)
+@triton.heuristics(
+    {
+        "UPGRADE_B_OFFS": lambda args: ((args["E"]-1) * args["stride_be"] + (args["N"]-1) * args["stride_bn"]+(args["K"]-1) * args["stride_bk"]).bit_length() > 31,
+    }
+)
 @triton.jit
 def fused_moe_kernel(
     # Pointers to matrices
@@ -325,6 +341,7 @@ def fused_moe_kernel(
     expert_ids_ptr,
     num_tokens_post_padded_ptr,
     # Matrix dimensions
+    E,
     N,
     K,
     EM,
@@ -355,6 +372,8 @@ def fused_moe_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    ACCF32: tl.constexpr,
     MUL_ROUTED_WEIGHT: tl.constexpr,
     top_k: tl.constexpr,
     compute_type: tl.constexpr,
@@ -363,6 +382,10 @@ def fused_moe_kernel(
     use_int8_w8a16: tl.constexpr,
     per_channel_quant: tl.constexpr,
     even_Ks: tl.constexpr,
+    UPGRADE: tl.constexpr,
+    UPGRADE_A_OFFS: tl.constexpr,
+    UPGRADE_B_OFFS: tl.constexpr,
+    FAST_F32_TO_BF16: tl.constexpr,
     c_sorted: tl.constexpr,
     filter_expert: tl.constexpr,
 ):
@@ -396,7 +419,12 @@ def fused_moe_kernel(
     # -----------------------------------------------------------
     # Map program ids `pid` to the block of C it should compute.
     # This is done in a grouped ordering to promote L2 data reuse.
-    pid = tl.program_id(axis=0)
+    if UPGRADE:
+        pid = tl.program_id(axis=0).to(tl.int64)
+        pid_z = tl.program_id(axis=1).to(tl.int64)
+    else:
+        pid = tl.program_id(axis=0)
+        pid_z = tl.program_id(axis=1)
     num_pid_m = tl.cdiv(EM, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
     num_pid_in_group = GROUP_SIZE_M * num_pid_n
@@ -415,15 +443,20 @@ def fused_moe_kernel(
     num_tokens_post_padded = tl.load(num_tokens_post_padded_ptr)
     if pid_m * BLOCK_SIZE_M >= num_tokens_post_padded:
         return
-    offs_token_id = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
+    offs_token_id = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(
+        tl.int64)
     offs_token = tl.load(sorted_token_ids_ptr + offs_token_id)
-    offs_token = offs_token.to(tl.int64)
+    # offs_token = offs_token.to(tl.int64)
     token_mask = offs_token < num_valid_tokens
 
-    off_experts_i32 = tl.load(expert_ids_ptr + pid_m)
-    off_experts = off_experts_i32.to(tl.int64)
+    if UPGRADE_B_OFFS:
+        off_experts = tl.load(expert_ids_ptr + pid_m).to(tl.int64)
+    else:
+        off_experts = tl.load(expert_ids_ptr + pid_m)
 
-    if filter_expert and off_experts == -1:
+    if UPGRADE_A_OFFS:
+        offs_token = offs_token.to(tl.int64)
+    if off_experts == -1:
         # -----------------------------------------------------------
         # Write back zeros to the output when the expert is not
         # in the current expert parallel rank.
@@ -441,58 +474,47 @@ def fused_moe_kernel(
         )
         return
 
-    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)) % N
-    offs_k = tl.arange(0, BLOCK_SIZE_K)
-    if a_desc is not None:
-        assert use_fp8_w8a8 and group_n > 0 and group_k > 0
-        start_offs_m = pid_m * BLOCK_SIZE_M
+    if UPGRADE_B_OFFS:
+        offs_bn = (pid_n * BLOCK_SIZE_N +
+                   tl.arange(0, BLOCK_SIZE_N).to(tl.int64)) % N
     else:
-        a_ptrs = a_ptr + (
-            offs_token[:, None] // top_k * stride_am + offs_k[None, :] * stride_ak
-        )
+        offs_bn = (pid_n * BLOCK_SIZE_N +
+                   tl.arange(0, BLOCK_SIZE_N)) % N
 
-    if b_desc is not None:
-        start_offs_n = pid_n * BLOCK_SIZE_N
-    else:
-        b_ptrs = (
-            b_ptr
-            + off_experts * stride_be
-            + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
-        )
+    # offs_k = tl.arange(0, BLOCK_SIZE_K)
+    offs_k = pid_z * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
 
-    if bias_ptr is not None:
-        bias = tl.load(
-            bias_ptr + off_experts * stride_bias_e + offs_bn[None, :] * stride_bias_n
-        )
+    a_ptrs = a_ptr + (offs_token[:, None] // top_k * stride_am +
+                      offs_k[None, :] * stride_ak)
+
+    b_ptrs = b_ptr + off_experts * stride_be + (offs_k[:, None] * stride_bk +
+                                                offs_bn[None, :] * stride_bn)
     if use_int8_w8a16:
-        b_scale_ptrs = (
-            b_scale_ptr + off_experts * stride_bse + offs_bn[None, :] * stride_bsn
-        )
+        b_scale_ptrs = b_scale_ptr + off_experts * stride_bse + offs_bn[
+            None, :] * stride_bsn
         b_scale = tl.load(b_scale_ptrs)
 
-    if use_fp8_w8a8 or use_int8_w8a8:
-        # block-wise
+    if use_int8_w8a8:
+        a_scale = tl.load(a_scale_ptr+(offs_token[:, None] // top_k * stride_asm),mask=token_mask[:, None],other=0.0)
+        b_scale_ptrs = b_scale_ptr + off_experts * stride_bse + offs_bn[
+            None, :] * stride_bsn
+        b_scale = tl.load(b_scale_ptrs)
+
+    if use_fp8_w8a8:
         if group_k > 0 and group_n > 0:
-            if a_desc is not None:
-                a_scale_ptrs = a_scale_ptr + offs_token_id * stride_asm
-            else:
-                a_scale_ptrs = a_scale_ptr + (offs_token // top_k) * stride_asm
-            if BLOCK_SIZE_N > group_n:
-                offs_bsn = offs_bn // group_n
-            else:
-                offs_bsn = pid_n * BLOCK_SIZE_N // group_n
-            b_scale_ptrs = (
-                b_scale_ptr + off_experts * stride_bse + offs_bsn * stride_bsn
-            )
+            a_scale_ptrs = a_scale_ptr + (offs_token // top_k) * stride_asm
+            offs_bsn = offs_bn // group_n
+            b_scale_ptrs = (b_scale_ptr + off_experts * stride_bse +
+                            offs_bsn * stride_bsn)
         # channel-wise
         elif per_channel_quant:
-            b_scale_ptrs = (
-                b_scale_ptr + off_experts * stride_bse + offs_bn[None, :] * stride_bsn
-            )
+            b_scale_ptrs = b_scale_ptr + off_experts * stride_bse + offs_bn[
+                None, :] * stride_bsn
             b_scale = tl.load(b_scale_ptrs)
             # Load per-token scale for activations
             a_scale_ptrs = a_scale_ptr + (offs_token // top_k) * stride_asm
-            a_scale = tl.load(a_scale_ptrs, mask=token_mask, other=0.0)[:, None]
+            a_scale = tl.load(a_scale_ptrs, mask=token_mask, other=0.0)[:,
+                                                                        None]
         # tensor-wise
         else:
             a_scale = tl.load(a_scale_ptr)
@@ -503,89 +525,93 @@ def fused_moe_kernel(
     # We accumulate into a `[BLOCK_SIZE_M, BLOCK_SIZE_N]` block
     # of fp32 values for higher accuracy.
     # `accumulator` will be converted back to fp16 after the loop.
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
-    for k_start in range(0, K, BLOCK_SIZE_K):
+    # accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.int32 if use_int8_w8a8 else tl.float32)
+
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K * SPLIT_K)):
         # Load the next block of A and B, generate a mask by checking the
         # K dimension.
-        if a_desc is not None:
-            a = a_desc.load([start_offs_m, k_start])
-        elif even_Ks:
+        if even_Ks:
             a = tl.load(
                 a_ptrs,
                 mask=token_mask[:, None],
                 other=0.0,
             )
+            b = tl.load(b_ptrs)
         else:
             a = tl.load(
                 a_ptrs,
-                mask=token_mask[:, None] & (offs_k[None, :] < K - k_start),
+                mask=token_mask[:, None] & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
                 other=0.0,
             )
-
-        if b_desc is not None:
-            b = (
-                b_desc.load([off_experts_i32, start_offs_n, k_start])
-                .reshape(BLOCK_SIZE_N, BLOCK_SIZE_K)
-                .T
-            )
-        elif even_Ks:
-            b = tl.load(b_ptrs)
-        else:
-            b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k_start, other=0.0)
+            b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
 
         # We accumulate along the K dimension.
         if use_int8_w8a16:
             accumulator = tl.dot(a, b.to(compute_type), acc=accumulator)
-        elif use_fp8_w8a8 or use_int8_w8a8:
+        elif use_int8_w8a8:
+            a = a.to(tl.int8)
+            accumulator += tl.dot(a, b,out_dtype=accumulator.dtype)
+        elif use_fp8_w8a8:
             if group_k > 0 and group_n > 0:
+                k_start = k * BLOCK_SIZE_K * SPLIT_K
                 offs_ks = k_start // group_k
-                a_scale = tl.load(
-                    a_scale_ptrs + offs_ks * stride_ask, mask=token_mask, other=0.0
-                )
+                a_scale = tl.load(a_scale_ptrs + offs_ks * stride_ask,
+                                  mask=token_mask,
+                                  other=0.0)
                 b_scale = tl.load(b_scale_ptrs + offs_ks * stride_bsk)
-                if BLOCK_SIZE_N > group_n:
-                    accumulator += tl.dot(a, b) * a_scale[:, None] * b_scale[None, :]
-                else:
-                    accumulator += tl.dot(a, b) * (a_scale[:, None] * b_scale)
+
+                accumulator += tl.dot(a, b) * a_scale[:,
+                                                      None] * b_scale[None, :]
             else:
                 if use_fp8_w8a8:
+                    # acc used to enable fp8_fast_accum
                     accumulator = tl.dot(a, b, acc=accumulator)
                 else:
                     accumulator += tl.dot(a, b)
         else:
             accumulator += tl.dot(a, b)
         # Advance the ptrs to the next K block.
-        if a_desc is None:
-            a_ptrs += BLOCK_SIZE_K * stride_ak
-        if b_desc is None:
-            b_ptrs += BLOCK_SIZE_K * stride_bk
-
-    if use_int8_w8a16:
-        accumulator *= b_scale
-    elif use_fp8_w8a8 or use_int8_w8a8:
-        if group_k == 0 or group_n == 0:
-            accumulator *= a_scale * b_scale
-
-    if bias_ptr is not None:
-        accumulator += bias
+        a_ptrs += BLOCK_SIZE_K * stride_ak * SPLIT_K
+        b_ptrs += BLOCK_SIZE_K * stride_bk* SPLIT_K
 
     if MUL_ROUTED_WEIGHT:
-        moe_weight = tl.load(topk_weights_ptr + offs_token, mask=token_mask, other=0)
-        accumulator *= moe_weight[:, None]
-
-    accumulator = accumulator.to(compute_type)
+        moe_weight = tl.load(topk_weights_ptr + offs_token,
+                             mask=token_mask,
+                             other=0)
+        accumulator = accumulator * moe_weight[:, None]
+    if use_int8_w8a16:
+        accumulator = (accumulator * b_scale).to(compute_type)
+    elif use_int8_w8a8:
+        accumulator = accumulator.to(tl.float32)
+        accumulator = (accumulator * a_scale * b_scale)
+        if not ACCF32:
+            if FAST_F32_TO_BF16:
+                accumulator = accumulator.to(compute_type, "rtne_no_nan")
+            else:
+                accumulator = accumulator.to(compute_type)
+    elif use_fp8_w8a8:
+        if group_k > 0 and group_n > 0:
+            accumulator = accumulator.to(compute_type)
+        else:
+            accumulator = (accumulator * a_scale * b_scale).to(compute_type)
+    else:
+        accumulator = accumulator.to(compute_type)
     # -----------------------------------------------------------
     # Write back the block of the output
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    if c_sorted:
-        c_ptrs = (
-            c_ptr + stride_cm * offs_token_id[:, None] + stride_cn * offs_cn[None, :]
-        )
-    else:
-        c_ptrs = c_ptr + stride_cm * offs_token[:, None] + stride_cn * offs_cn[None, :]
+    c_ptrs = c_ptr + stride_cm * offs_token[:, None] + stride_cn * offs_cn[
+        None, :]
     c_mask = token_mask[:, None] & (offs_cn[None, :] < N)
-    tl.store(c_ptrs, accumulator, mask=c_mask)
+    if SPLIT_K == 1:
+        tl.store(c_ptrs, accumulator, mask=c_mask)
+    else:
+        tl.atomic_add(c_ptrs, accumulator, mask=c_mask)
+
+
+def ceil_div(a, b):
+    return (a + b - 1) // b
 
 
 def invoke_fused_moe_kernel(
@@ -667,10 +693,25 @@ def invoke_fused_moe_kernel(
         assert A_scale is None
         assert B_scale is None
 
-    grid = lambda META: (
-        triton.cdiv(sorted_token_ids.shape[0], META["BLOCK_SIZE_M"])
-        * triton.cdiv(B.shape[1], META["BLOCK_SIZE_N"]),
+    M = A.shape[0]
+    num_tokens = M * top_k
+
+    EM = sorted_token_ids.shape[0]
+    if A.shape[0] < config["BLOCK_SIZE_M"]:
+        # optimize for small batch_size.
+        # We assume that top_ids of each token is unique, so
+        # so num_valid_experts <= batch_size <= BLOCK_SIZE_M,
+        # and we can skip some invalid blocks.
+        EM = min(sorted_token_ids.shape[0],
+                 A.shape[0] * top_k * config['BLOCK_SIZE_M'])
+    if use_int4_w4a16:
+        grid = lambda META: (
+            triton.cdiv(sorted_token_ids.shape[0], META["BLOCK_SIZE_M"])
+                * triton.cdiv(B.shape[1], META["BLOCK_SIZE_N"]),
     )
+    else:
+        grid = lambda META: (triton.cdiv(EM, META['BLOCK_SIZE_M']) * triton.cdiv(
+            B.shape[1], META['BLOCK_SIZE_N']), META['SPLIT_K'] )
 
     K = B.shape[2] - padded_size
     if K % config["BLOCK_SIZE_K"] == 0:
@@ -790,6 +831,10 @@ def invoke_fused_moe_kernel(
         else:
             b_desc = None
 
+        config = config.copy()
+        BLOCK_SIZE_K = config.pop("BLOCK_SIZE_K")
+        if block_shape is not None:
+            BLOCK_SIZE_K = min(BLOCK_SIZE_K, min(block_shape[0], block_shape[1]))
         fused_moe_kernel[grid](
             A,
             a_desc,
@@ -803,10 +848,11 @@ def invoke_fused_moe_kernel(
             sorted_token_ids,
             expert_ids,
             num_tokens_post_padded,
+            B.shape[0],
             B.shape[1],
             B.shape[2] - padded_size,
-            sorted_token_ids.shape[0],
-            topk_ids.numel(),
+            EM,
+            num_tokens,
             A.stride(0),
             A.stride(1),
             B.stride(0),
@@ -831,6 +877,8 @@ def invoke_fused_moe_kernel(
             use_int8_w8a16=use_int8_w8a16,
             per_channel_quant=per_channel_quant,
             even_Ks=even_Ks,
+            BLOCK_SIZE_K=BLOCK_SIZE_K,
+            FAST_F32_TO_BF16 = True,
             c_sorted=c_sorted,
             filter_expert=filter_expert,
             **config,

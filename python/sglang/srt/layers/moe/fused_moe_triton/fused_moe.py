@@ -542,7 +542,7 @@ def fused_experts_impl(
         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
         down_config = (down_config or config)
-        down_config = config
+        # down_config = config
         
         stage1_config = config["stage1"] if "stage1" in config else config
         stage2_config = down_config["stage2"] if "stage2" in down_config else down_config
@@ -567,7 +567,16 @@ def fused_experts_impl(
             assert kernel_m > 0, ("cutlass_fused_moe_w4a16 BLOCK_SIZE_M must greater than zero.")
             stage1_config["BLOCK_SIZE_M"] = kernel_m
             stage2_config["BLOCK_SIZE_M"] = kernel_m
-            
+
+        if 'ACCF32' not in stage1_config and not use_int4_w4a16:
+            stage1_config['ACCF32'] = False
+        if 'ACCF32' not in stage2_config and not use_int4_w4a16:
+            stage2_config['ACCF32'] = False
+        if 'SPLIT_K' not in stage1_config and not use_int4_w4a16:
+            stage1_config['SPLIT_K'] = 1
+        if 'SPLIT_K' not in stage2_config and not use_int4_w4a16:
+            stage2_config['SPLIT_K'] = 1
+
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
             curr_topk_ids, stage1_config["BLOCK_SIZE_M"], E
         )
@@ -655,6 +664,10 @@ def fused_experts_impl(
         else:
             raise ValueError(f"Unsupported activation: {activation=}, with {is_gated=}")
 
+        if stage1_config["BLOCK_SIZE_M"] != stage2_config["BLOCK_SIZE_M"]:
+            sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
+                curr_topk_ids, stage2_config["BLOCK_SIZE_M"], E
+            )
         invoke_fused_moe_kernel(
             intermediate_cache2,
             w2,
