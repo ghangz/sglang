@@ -11,6 +11,7 @@ import torch
 import triton
 # from sgl_kernel.flash_mla import flash_mla_with_kvcache, get_mla_metadata
 from flash_mla import flash_mla_with_kvcache, get_mla_metadata
+from sglang.srt.distributed.parallel_state import get_dcp_rank, get_dcp_world_size
 
 from sglang.srt.layers.attention.flashinfer_mla_backend import FlashInferMLAAttnBackend
 from sglang.srt.layers.attention.utils import create_flashmla_kv_indices_triton
@@ -84,6 +85,16 @@ class FlashMLABackend(FlashInferMLAAttnBackend):
         }
 
         self.num_draft_tokens = model_runner.server_args.speculative_num_draft_tokens
+        # get dcp info
+        try:
+            self.dcp_world_size = get_dcp_world_size()
+            self.dcp_rank = get_dcp_rank()
+        except Exception as e:
+            print(
+                f"dcp disabled or not initialized, dcp world size and rank will be set to 1 and 0"
+                )
+            self.dcp_world_size = 1
+            self.dcp_rank = 0
 
     def init_forward_metadata(self, forward_batch: ForwardBatch):
 
@@ -407,7 +418,7 @@ class FlashMLABackend(FlashInferMLAAttnBackend):
             return o.view(-1, layer.tp_q_head_num * layer.v_head_dim)
         else:
             # todo: need check all causal True or False?
-            o, _ = flash_mla_with_kvcache(
+            o, lse = flash_mla_with_kvcache(
                 q=reshape_q,
                 k_cache=k_cache.view(-1, PAGE_SIZE, 1, self.kv_cache_dim),
                 block_table=self.forward_metadata.block_kv_indices[:bs],
@@ -419,7 +430,7 @@ class FlashMLABackend(FlashInferMLAAttnBackend):
                 causal=True,
             )
 
-            return o.view(-1, layer.tp_q_head_num * layer.v_head_dim)
+            return o.view(-1, layer.tp_q_head_num * layer.v_head_dim), lse
 
     def forward_extend(
         self,

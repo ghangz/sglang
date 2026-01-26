@@ -31,6 +31,7 @@ from sglang.srt.mem_cache.base_prefix_cache import BasePrefixCache
 from sglang.srt.mem_cache.mamba_radix_cache import MambaRadixCache
 from sglang.srt.mem_cache.radix_cache import RadixCache, RadixKey, TreeNode
 from sglang.srt.server_args import ServerArgs
+from sglang.srt.distributed import get_dcp_world_size
 
 if TYPE_CHECKING:
     from sglang.srt.mem_cache.allocator import BaseTokenToKVPoolAllocator
@@ -334,6 +335,7 @@ class PrefillAdder:
         self.new_token_ratio = new_token_ratio
         self.rem_input_tokens = rem_input_tokens - mixed_with_decode_tokens
         self.rem_chunk_tokens = rem_chunk_tokens
+        self.chunked_prefill_size = rem_chunk_tokens
         if self.rem_chunk_tokens is not None:
             self.rem_chunk_tokens -= mixed_with_decode_tokens
         self.rem_total_token_offset = mixed_with_decode_tokens
@@ -447,12 +449,14 @@ class PrefillAdder:
         self.log_hit_tokens += prefix_len
         self.log_input_tokens += extend_input_len
 
-    def add_chunked_req(self, req: Req):
+    def add_chunked_req(self, req: Req, truncation_align_size: Optional[int] = None):
         _rem_tokens = min(self.rem_chunk_tokens, int(self.rem_total_tokens))
         # The chunked_req must be added to the list; otherwise, it will cause a memory leak.
         # Therefore, in certain cases where _rem_tokens <= 0, it should be replaced with rem_chunk_tokens.
         if _rem_tokens <= 0:
             _rem_tokens = self.rem_chunk_tokens
+        if truncation_align_size is not None:
+            _rem_tokens = truncation_align_size * (_rem_tokens // truncation_align_size)
         truncated = req.extend_input_len > _rem_tokens
         req.set_extend_input_len(min(req.extend_input_len, _rem_tokens))
         req.fill_ids = req.fill_ids[: len(req.prefix_indices) + req.extend_input_len]
@@ -485,7 +489,7 @@ class PrefillAdder:
             finally:
                 self.tree_cache.dec_lock_ref(last_node)
 
-    def add_one_req_ignore_eos(self, req: Req):
+    def add_one_req_ignore_eos(self, req: Req, has_chunked_req: bool, truncation_align_size: Optional[int]):
         # Early exit if no enough tokens for the input tokens
         if self.ceil_paged_tokens(req.extend_input_len) > min(
             self.cur_rem_tokens, self.rem_total_tokens
@@ -552,12 +556,21 @@ class PrefillAdder:
                 req.extend_input_len,
                 min(req.sampling_params.max_new_tokens, CLIP_MAX_NEW_TOKENS),
             )
+        elif get_dcp_world_size() > 1 and req.extend_input_len < self.chunked_prefill_size:
+            return AddReqResult.OTHER
         else:
-            if self.rem_chunk_tokens <= 0:
+            if self.rem_chunk_tokens <= 0 or has_chunked_req:
                 return AddReqResult.OTHER
 
             # Chunked prefill
             trunc_len = self.rem_chunk_tokens
+            if truncation_align_size is not None:
+                if trunc_len < truncation_align_size:
+                    return AddReqResult.OTHER
+                else:
+                    trunc_len = truncation_align_size * (
+                        trunc_len // truncation_align_size
+                    )
 
             req.set_extend_input_len(trunc_len)
             req.fill_ids = req.fill_ids[:trunc_len]
@@ -580,7 +593,7 @@ class PrefillAdder:
             return AddReqResult.OTHER
 
         if req.sampling_params.ignore_eos and getattr(self.tree_cache, "disable", True):
-            return self.add_one_req_ignore_eos(req)
+            return self.add_one_req_ignore_eos(req, has_chunked_req, truncation_align_size)
 
         total_tokens = req.extend_input_len + min(
             max(req.sampling_params.max_new_tokens - len(req.output_ids), 0),
@@ -633,10 +646,12 @@ class PrefillAdder:
                         CLIP_MAX_NEW_TOKENS,
                     ),
                 )
+            elif get_dcp_world_size() > 1 and input_tokens < self.chunked_prefill_size:
+                return AddReqResult.OTHER
             else:
                 # Make sure at least one page is available
                 trunc_len = self.rem_chunk_tokens // self.page_size * self.page_size
-                if trunc_len <= 0:
+                if trunc_len <= 0 or has_chunked_req:
                     return AddReqResult.OTHER
 
                 # When truncation align size is set, we want to assert that the prefill prefix length is multiple of truncation align size
