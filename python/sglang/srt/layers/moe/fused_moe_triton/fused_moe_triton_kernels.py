@@ -44,7 +44,9 @@ _is_cpu = is_cpu()
 _use_aiter = get_bool_env_var("SGLANG_USE_AITER") and _is_hip
 
 if _is_cuda:
-    pass
+    from moe_fused_w4a16 import (
+        mctlass_fused_moe_kernel_w4a16
+    )
 elif _is_cpu and _is_cpu_amx_available:
     pass
 elif _is_hip:
@@ -58,6 +60,10 @@ if enable_mctlass_fused_moe_python_api:
     import mctlassEx
     from mctlassEx import FusedMoeGEMM
     gemm = FusedMoeGEMM()
+    
+enable_maca_sglang_fused_moe_mctlass_w4a16 = bool(
+    int(os.getenv("ENABLE_MACA_SGLANG_FUSED_MOE_MCTLASS_W4A16", "1"))
+)
 
 def support_tensor_descriptor():
     return _support_tensor_descriptor
@@ -793,8 +799,30 @@ def invoke_fused_moe_kernel(
 
     if fuse_sum_all_reduce:
         assert not c_sorted, "fuse_sum_all_reduce only supports c_sorted=False"
-
+        
     if (
+        enable_maca_sglang_fused_moe_mctlass_w4a16 and use_int4_w4a16
+        and block_shape is not None
+        and block_shape[1] > 0
+    ):
+        mctlass_fused_moe_kernel_w4a16(
+            A,
+            B,
+            C,
+            B_scale,
+            B_zp,
+            topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            B.shape[1],
+            A.shape[1],
+            sorted_token_ids.shape[0],
+            topk_ids.numel(),
+            top_k,
+            mul_routed_weight
+        )
+    elif (
         (use_int8_w8a16 or use_int4_w4a16)
         and block_shape is not None
         and block_shape[1] > 0

@@ -35,6 +35,7 @@ from .fused_moe_triton_kernels import (
 )
 from .moe_align_block_size import moe_align_block_size
 from sgl_kernel import cutlass_moe_mm_gemm_kernel_m_w8a8
+from moe_fused_w4a16 import mctlass_moe_w4a16_gemm_kernel_mnk
 
 if TYPE_CHECKING:
     from sglang.srt.layers.moe.topk import StandardTopKOutput
@@ -88,6 +89,10 @@ if enable_mctlass_fused_moe_python_api:
     import mctlassEx
     from mctlassEx import FusedMoeGEMM
     gemm = FusedMoeGEMM()
+    
+enable_maca_sglang_fused_moe_mctlass_w4a16 = bool(
+    int(os.getenv("ENABLE_MACA_SGLANG_FUSED_MOE_MCTLASS_W4A16", "1"))
+)
 
 @register_custom_op(mutates_args=["hidden_states"])
 def inplace_fused_experts(
@@ -529,6 +534,12 @@ def fused_experts_impl(
             assert kernel_m > 0, ("cutlass_fused_moe_bf16 BLOCK_SIZE_M must greater than zero.")
             stage1_config["BLOCK_SIZE_M"] = kernel_m
             stage2_config["BLOCK_SIZE_M"] = kernel_m 
+            
+        elif enable_maca_sglang_fused_moe_mctlass_w4a16 and use_int4_w4a16:
+            kernel_m = mctlass_moe_w4a16_gemm_kernel_mnk(curr_topk_ids.numel(), N, curr_hidden_states.shape[1], E)
+            assert kernel_m > 0, ("cutlass_fused_moe_w4a16 BLOCK_SIZE_M must greater than zero.")
+            stage1_config["BLOCK_SIZE_M"] = kernel_m
+            stage2_config["BLOCK_SIZE_M"] = kernel_m
             
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
             curr_topk_ids, stage1_config["BLOCK_SIZE_M"], E

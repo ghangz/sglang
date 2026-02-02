@@ -6097,6 +6097,9 @@ class ServerArgs:
         return max(FLA_CHUNK_SIZE, self.page_size)
 
     def check_server_args(self):
+        # Check model data type
+        assert self.dtype not in ["half", "float16"], '"half" and "float16" are not supported.'
+
         # Check parallel size constraints
         assert (
             self.tp_size * self.pp_size
