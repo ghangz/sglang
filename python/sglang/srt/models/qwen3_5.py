@@ -15,6 +15,7 @@
 """Inference-only Qwen3.5 model and Qwen3.5 MoE model compatible with HuggingFace weights."""
 
 import logging
+import os
 from functools import lru_cache
 from typing import Iterable, Optional, Set, Tuple, Union
 
@@ -105,6 +106,7 @@ _is_amx_available = cpu_has_amx_support()
 
 cached_get_processor = lru_cache(get_processor)
 
+SGLANG_QWEN3_5_ENABLE_ALT_STREAM = (os.getenv("SGLANG_QWEN3_5_ENABLE_ALT_STREAM", "0") == "1")
 
 class Qwen3_5GatedDeltaNet(nn.Module):
     def __init__(
@@ -901,7 +903,7 @@ class Qwen3_5ForCausalLM(nn.Module):
         self.hidden_size = config.hidden_size
         self.pp_group = get_pp_group()
 
-        alt_stream = torch.cuda.Stream() if _is_cuda else None
+        alt_stream = torch.cuda.Stream() if _is_cuda and SGLANG_QWEN3_5_ENABLE_ALT_STREAM else None
 
         # Embedding layer
         if self.pp_group.is_first_rank:
