@@ -32,7 +32,7 @@ struct Signal {
 };
 
 struct __align__(16) RankData {
-  const void* __restrict__ ptrs[8];
+   void* ptrs[8];
 };
 
 struct __align__(16) RankSignals {
@@ -134,30 +134,42 @@ DINLINE O downcast(array_t<float, O::size> val) {
 }
 
 static DINLINE void st_flag_release(FlagType* flag_addr, FlagType flag) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
-  asm volatile("st.release.sys.global.u32 [%1], %0;" ::"r"(flag), "l"(flag_addr));
-#else
-  asm volatile("membar.sys; st.volatile.global.u32 [%1], %0;" ::"r"(flag), "l"(flag_addr));
-#endif
+// #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+//   asm volatile("st.release.sys.global.u32 [%1], %0;" ::"r"(flag), "l"(flag_addr));
+// #else
+//   asm volatile("membar.sys; st.volatile.global.u32 [%1], %0;" ::"r"(flag), "l"(flag_addr));
+// #endif
+  __threadfence();
+  ((volatile int *)(flag_addr))[0] = (flag);
 }
 
 static DINLINE FlagType ld_flag_acquire(FlagType* flag_addr) {
   FlagType flag;
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
-  asm volatile("ld.acquire.sys.global.u32 %0, [%1];" : "=r"(flag) : "l"(flag_addr));
-#else
-  asm volatile("ld.volatile.global.u32 %0, [%1]; membar.gl;" : "=r"(flag) : "l"(flag_addr));
-#endif
+// #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+//   asm volatile("ld.acquire.sys.global.u32 %0, [%1];" : "=r"(flag) : "l"(flag_addr));
+// #else
+//   asm volatile("ld.volatile.global.u32 %0, [%1]; membar.gl;" : "=r"(flag) : "l"(flag_addr));
+// #endif
+  {
+    __threadfence();
+    (flag)=((volatile int *)(flag_addr))[0];
+  }
   return flag;
 }
 
 static DINLINE void st_flag_volatile(FlagType* flag_addr, FlagType flag) {
-  asm volatile("st.volatile.global.u32 [%1], %0;" ::"r"(flag), "l"(flag_addr));
+  // asm volatile("st.volatile.global.u32 [%1], %0;" ::"r"(flag), "l"(flag_addr));
+    __threadfence();
+  ((volatile int *)(flag_addr))[0] = (flag);
 }
 
 static DINLINE FlagType ld_flag_volatile(FlagType* flag_addr) {
   FlagType flag;
-  asm volatile("ld.volatile.global.u32 %0, [%1];" : "=r"(flag) : "l"(flag_addr));
+  // asm volatile("ld.volatile.global.u32 %0, [%1];" : "=r"(flag) : "l"(flag_addr));
+  {
+    __threadfence();
+    (flag)=((volatile int *)(flag_addr))[0];
+  }
   return flag;
 }
 
@@ -267,7 +279,7 @@ __global__ void __launch_bounds__(512, 1) cross_device_reduce_2stage(
 
 using IPC_KEY = std::array<uint8_t, sizeof(cudaIpcMemHandle_t)>;
 static_assert(sizeof(IPC_KEY) == sizeof(cudaIpcMemHandle_t));
-static_assert(alignof(IPC_KEY) == alignof(cudaIpcMemHandle_t));
+// static_assert(alignof(IPC_KEY) == alignof(cudaIpcMemHandle_t));
 
 class CustomAllreduce {
  public:
