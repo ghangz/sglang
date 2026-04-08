@@ -34,6 +34,7 @@ from .fused_moe_triton_kernels import (
     support_tensor_descriptor,
 )
 from .moe_align_block_size import moe_align_block_size
+from sgl_kernel import cutlass_moe_mm_gemm_kernel_m_w8a8
 
 if TYPE_CHECKING:
     from sglang.srt.layers.moe.topk import StandardTopKOutput
@@ -79,6 +80,7 @@ if not _is_cuda and not _is_hip and not _is_xpu:
 padding_size = 128 if bool(int(os.getenv("SGLANG_MOE_PADDING", "0"))) else 0
 g_fuse_moe_cache: torch.tensor = None
 g_fuse_moe_cache_enable = bool(get_int_env_var("SGLANG_FUSE_MOE_CACHE_ENABLE", 1))
+enable_mctlass_fused_moe = (os.getenv("ENABLE_MCTLASS_FUSED_MOE", "1") == "1")
 
 @register_custom_op(mutates_args=["hidden_states"])
 def inplace_fused_experts(
@@ -495,9 +497,24 @@ def fused_experts_impl(
             and (not use_int8_w8a16)
             and (not use_int4_w4a16)
         )
+        down_config = (down_config or config)
+        down_config = config
+        
+        stage1_config = config["stage1"] if "stage1" in config else config
+        stage2_config = down_config["stage2"] if "stage2" in down_config else down_config
+        #  and envs.MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE
+        if use_int8_w8a8 and enable_mctlass_fused_moe:
+            # call mctlass gemm_kernel_mnk to calculate kernel_m
+            kernel_m = cutlass_moe_mm_gemm_kernel_m_w8a8(curr_topk_ids.numel(), N,
+                                                         curr_hidden_states.shape[1], E)
+            assert kernel_m > 0, ("cutlass_moe_w8a8 BLOCK_SIZE_M must greater than zero.")
+            # override kernel_m to config["BLOCK_SIZE_M"]
+            stage1_config["BLOCK_SIZE_M"] = kernel_m
+            stage2_config["BLOCK_SIZE_M"] = kernel_m
 
+            
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-            curr_topk_ids, config["BLOCK_SIZE_M"], E
+            curr_topk_ids, stage1_config["BLOCK_SIZE_M"], E
         )
 
         invoke_fused_moe_kernel(
@@ -515,7 +532,7 @@ def fused_experts_impl(
             num_tokens_post_padded,
             apply_router_weight_on_input,
             topk_ids.shape[1],
-            config,
+            stage1_config,
             compute_type=compute_type,
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
@@ -627,7 +644,7 @@ def fused_experts_impl(
             num_tokens_post_padded,
             not apply_router_weight_on_input,
             1,
-            down_config or config,
+            stage2_config,
             compute_type=compute_type,
             use_fp8_w8a8=use_fp8_w8a8,
             use_int8_w8a8=use_int8_w8a8,
