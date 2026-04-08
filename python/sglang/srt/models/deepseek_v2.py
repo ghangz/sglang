@@ -1649,7 +1649,7 @@ class DeepseekV2DecoderLayer(nn.Module):
                 layer_scatter_modes=self.layer_scatter_modes,
                 input_layernorm=self.input_layernorm,
                 post_attention_layernorm=self.post_attention_layernorm,
-                allow_reduce_scatter=True,
+                allow_reduce_scatter=False if os.getenv("MX_DISABLE_DENSE_REDUCE_SCATTER") else True,
                 is_last_layer=(
                     is_nextn or (self.layer_id == self.config.num_hidden_layers - 1)
                 ),
@@ -1660,7 +1660,7 @@ class DeepseekV2DecoderLayer(nn.Module):
                 layer_scatter_modes=self.layer_scatter_modes,
                 input_layernorm=self.input_layernorm,
                 post_attention_layernorm=self.post_attention_layernorm,
-                allow_reduce_scatter=True,
+                allow_reduce_scatter=False if os.getenv("MX_DISABLE_DENSE_REDUCE_SCATTER") else True,
                 is_last_layer=(
                     is_nextn or (self.layer_id == self.config.num_hidden_layers - 1)
                 ),
