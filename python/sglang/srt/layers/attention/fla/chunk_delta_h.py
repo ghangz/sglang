@@ -335,6 +335,6 @@ def chunk_gated_delta_rule_fwd_h(
         SAVE_NEW_VALUE=v_new is not None,
         IS_VARLEN=cu_seqlens is not None,
         num_warps=4,
-        num_stages=2,
+        num_stages=1,
     )
     return h, v_new

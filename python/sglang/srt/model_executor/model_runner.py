@@ -831,6 +831,9 @@ class ModelRunner(ModelRunnerKVCacheMixin):
             logger.info(
                 "Double sparsity optimization is turned on. Use triton backend without CUDA graph."
             )
+            
+            os.environ["TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP"] = "1"
+            os.environ["TRITON_ENABLE_MACA_CHAIN_DOT_OPT"] = "1"
             server_args.attention_backend = "triton"
             server_args.disable_cuda_graph = True
 
@@ -928,9 +931,9 @@ class ModelRunner(ModelRunnerKVCacheMixin):
             dist_init_method = NetworkAddress(
                 self.server_args.host or "127.0.0.1", self.dist_port
             ).to_tcp()
-        set_custom_all_reduce(not self.server_args.disable_custom_all_reduce)
-        set_mscclpp_all_reduce(self.server_args.enable_mscclpp)
-        set_torch_symm_mem_all_reduce(self.server_args.enable_torch_symm_mem)
+        set_custom_all_reduce(False)
+        set_mscclpp_all_reduce(False)
+        set_torch_symm_mem_all_reduce(False)
 
         if not self.is_draft_worker:
             if self.device == "cpu":

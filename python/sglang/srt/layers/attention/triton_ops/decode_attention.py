@@ -437,7 +437,7 @@ def _decode_grouped_att_m_fwd(
     logit_cap,
     xai_temperature_len=-1,
 ):
-    BLOCK = 32
+    BLOCK = 16
     Lk = k_buffer.shape[-1]
     Lv = v_buffer.shape[-1]
 
@@ -467,7 +467,7 @@ def _decode_grouped_att_m_fwd(
         MAX_KV_SPLITS,
     )
 
-    extra_kargs = {}
+    extra_kargs = {"scenario":"flashattn-fwd"}
     num_stages = 2
     if _is_hip:
         # https://rocm.docs.amd.com/en/docs-6.2.0/how-to/llm-fine-tuning-optimization/optimizing-triton-kernel.html
@@ -505,7 +505,7 @@ def _decode_grouped_att_m_fwd(
         logit_cap=logit_cap,
         xai_temperature_len=xai_temperature_len,
         num_warps=4,
-        num_stages=num_stages,
+        num_stages=1,
         Lk=Lk,
         Lv=Lv,
         **extra_kargs,

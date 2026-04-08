@@ -110,7 +110,7 @@ class TritonAttnBackend(AttentionBackend):
         self.static_kv_splits = get_bool_env_var(
             "SGLANG_TRITON_DECODE_ATTN_STATIC_KV_SPLITS", "false"
         )
-        self.max_kv_splits = model_runner.server_args.triton_attention_num_kv_splits
+        self.max_kv_splits = 16
 
         self.allow_bidirectional_attention_in_extend = (
             model_runner.server_args.disable_cuda_graph
@@ -420,6 +420,7 @@ class TritonAttnBackend(AttentionBackend):
             attn_logits = None
             attn_lse = None
             max_extend_len = max(forward_batch.extend_seq_lens_cpu)
+            self.max_kv_splits = 16 if max_extend_len > 256 else 2
             num_kv_splits = None
 
         self.forward_metadata = ForwardMetadata(

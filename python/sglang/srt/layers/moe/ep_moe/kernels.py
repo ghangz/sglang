@@ -8,10 +8,10 @@ from sglang.srt.utils import ceil_div, is_cuda
 logger = logging.getLogger(__name__)
 
 _is_cuda = is_cuda()
-if _is_cuda:
-    from sglang.srt.layers.quantization.fp8_kernel import (
-        sglang_per_token_group_quant_fp8 as per_token_group_quant_fp8,
-    )
+# if _is_cuda:
+#     from sglang.srt.layers.quantization.fp8_kernel import (
+#         sglang_per_token_group_quant_fp8 as per_token_group_quant_fp8,
+#     )
 
 import triton.language as tl
 
@@ -199,7 +199,7 @@ def compute_seg_indptr_triton_kernel(reorder_topk_ids, seg_indptr, num_toks):
 def cutlass_w4_run_moe_ep_preproess(topk_ids: torch.Tensor):
     _, reorder_ids = torch.sort(topk_ids.view(-1), stable=True)
 
-    BLOCK_SIZE = 512
+    BLOCK_SIZE = 256
     grid = (triton.cdiv(topk_ids.numel(), BLOCK_SIZE),)
     src2dst = torch.empty(topk_ids.numel(), device=topk_ids.device, dtype=torch.int32)
     compute_src2dst_triton_kernel[grid](

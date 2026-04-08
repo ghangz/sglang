@@ -36,7 +36,7 @@ _is_hip = is_hip()
 _is_xpu = is_xpu()
 
 if _is_cuda:
-    from flashinfer.prefill import cudnn_batch_prefill_with_kv_cache
+    # from flashinfer.prefill import cudnn_batch_prefill_with_kv_cache
 
     try:
         from sgl_kernel.flash_attn import flash_attn_varlen_func

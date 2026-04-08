@@ -58,12 +58,14 @@ if _is_cuda or _is_xpu:
             _flashinfer_layernorm_available = False
     else:
         _flashinfer_layernorm_available = False
-
-    from sgl_kernel import (
-        fused_add_rmsnorm,
+        
+    import flashinfer
+    from sgl_kernel import fused_add_rmsnorm
+    from flashinfer import rmsnorm 
+    # as flashinfer_rmsnorm
+    from flashinfer import (
         gemma_fused_add_rmsnorm,
-        gemma_rmsnorm,
-        rmsnorm,
+        gemma_rmsnorm
     )
 _has_vllm_rms_norm = False
 if _use_aiter:
@@ -85,6 +87,28 @@ logger = logging.getLogger(__name__)
 if _is_npu:
     import torch_npu
 
+if _is_cuda:
+    @torch.library.custom_op("sglang::rmsnorm", mutates_args=())
+    def sgl_rmsnorm(
+        input: torch.Tensor,
+        weight: torch.Tensor,
+        eps: float = 1e-6,
+        out: Optional[torch.Tensor] = None,
+        enable_pdl: bool = False,
+    ) -> torch.Tensor:
+        return rmsnorm(input, weight, eps, out, enable_pdl)
+
+    @torch.library.register_fake("sglang::rmsnorm")
+    def _(
+        input: torch.Tensor,
+        weight: torch.Tensor,
+        eps: float = 1e-6,
+        out: Optional[torch.Tensor] = None,
+        enable_pdl: bool = False,
+    ) -> torch.Tensor:
+        if out is None:
+            out = torch.empty_like(input)
+        return out
 
 def _forward_with_allreduce_fusion(
     norm_module,
@@ -204,7 +228,7 @@ class RMSNorm(MultiPlatformOp):
                 residual = residual + post_residual_addition
             fused_add_rmsnorm(x, residual, self.weight.data, self.variance_epsilon)
             return x, residual
-        out = rmsnorm(x, self.weight.data, self.variance_epsilon)
+        out = sgl_rmsnorm(x, self.weight.data, self.variance_epsilon)
         return out
 
     def forward_npu(

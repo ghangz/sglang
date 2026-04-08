@@ -44,16 +44,17 @@ if TYPE_CHECKING:
     from sglang.srt.layers.moe.topk import TopKOutput
 
 
-try:
-    if is_sm120_supported():
-        from flashinfer import fp4_quantize
-    else:
-        from sglang.jit_kernel.nvfp4 import scaled_fp4_quant as fp4_quantize
+# try:
+#     if is_sm120_supported():
+#         from flashinfer import fp4_quantize
+#     else:
+#         from sglang.jit_kernel.nvfp4 import scaled_fp4_quant as fp4_quantize
 
-    from flashinfer import fp4_quantize as fp4_quantize_flashinfer
-except ImportError:
-    fp4_quantize = None
+#     from flashinfer import fp4_quantize as fp4_quantize_flashinfer
+# except ImportError:
+#     fp4_quantize = None
 
+fp4_quantize = None
 
 class StandardDispatchOutput(NamedTuple):
     """Standard dispatch output."""
