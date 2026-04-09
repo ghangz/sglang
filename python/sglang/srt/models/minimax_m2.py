@@ -177,7 +177,8 @@ def rms_sumsq_serial(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     # satisfy the alignment requirement.
     B_padded = (B + B2 + 3) // 4 * 4
 
-    sum_sq = torch.empty(B_padded, device=x1.device, dtype=torch.float32)
+    # sum_sq = torch.empty(B_padded, device=x1.device, dtype=torch.float32)
+    sum_sq = torch.empty(B + B2, device=x1.device, dtype=torch.float32)   
 
     BLOCK_SIZE1 = triton.next_power_of_2(D1)
     BLOCK_SIZE2 = triton.next_power_of_2(D2)
@@ -297,6 +298,7 @@ class MiniMaxM2RMSNormTP(nn.Module):
         return x
 
     @staticmethod
+    @torch.compile(dynamic=True, backend=get_compiler_backend())   
     def forward_qk(
         q_norm: "MiniMaxM2RMSNormTP",
         k_norm: "MiniMaxM2RMSNormTP",
@@ -1005,6 +1007,9 @@ class MiniMaxM2ForCausalLM(nn.Module):
             ]  # Specific layers for EAGLE3 support
         else:
             self.model.layers_to_capture = [val + 1 for val in layer_ids]
+            
+        for layer_id in self.model.layers_to_capture:
+            setattr(self.model.layers[layer_id], "_is_layer_to_capture", True)
 
     def get_embed_and_head(self):
         return self.model.embed_tokens.weight, self.lm_head.weight
