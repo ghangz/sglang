@@ -292,7 +292,9 @@ class GroupCoordinator:
                     pg_options=MooncakeBackendOptions(active_ranks_cpu),
                 )
             else:
-                pg_options = get_torch_distributed_pg_options(group_name)
+                pg_options = torch.distributed.ProcessGroupNCCL.Options()
+                if torch_distributed_backend == "nccl" or torch_distributed_backend == torch.distributed.Backend.NCCL:
+                    pg_options.is_high_priority_stream = True
                 device_group = torch.distributed.new_group(
                     ranks, backend=torch_distributed_backend, pg_options=pg_options
                 )
@@ -1670,7 +1672,10 @@ def init_distributed_environment(
             assert timeout > 0, "timeout must be positive"
             timeout = timedelta(seconds=timeout)
 
-        pg_options = get_torch_distributed_pg_options()
+        pg_options = torch.distributed.ProcessGroupNCCL.Options()
+
+        if backend == "nccl":
+            pg_options.is_high_priority_stream = True
 
         # this backend is used for WORLD
         torch.distributed.init_process_group(
