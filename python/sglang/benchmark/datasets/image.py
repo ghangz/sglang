@@ -118,12 +118,25 @@ def create_mm_data_row(
         prompt_str = f"<image>{text_prompt}"
 
     # Calculate total tokens (text + vision)
-    prompt_len = processor(
-        text=[prompt_str],
-        images=images,
-        padding=False,
-        return_tensors="pt",
-    )["input_ids"].numel()
+    processor_name = type(processor).__name__
+    processor_module = type(processor).__module__.lower()
+
+    if "kimi" in processor_name.lower() or "kimi_k25" in processor_module:
+        proc_out = processor(
+            text=[prompt_str],
+            medias=[{"type": "image", "image": img} for img in images],
+            padding=False,
+            return_tensors="pt",
+        )
+    else:
+        proc_out = processor(
+            text=[prompt_str],
+            images=images,
+            padding=False,
+            return_tensors="pt",
+        )
+
+    prompt_len = proc_out["input_ids"].numel()
 
     # Calculate text-only tokens
     try:
