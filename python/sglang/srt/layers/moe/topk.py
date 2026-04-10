@@ -1077,8 +1077,6 @@ def select_experts(
                         topk_group=topk_group,
                         num_fused_shared_experts=num_fused_shared_experts,
                         routed_scaling_factor=routed_scaling_factor,
-                        num_token_non_padded=num_token_non_padded,
-                        expert_location_dispatch_info=expert_location_dispatch_info,
                         apply_routed_scaling_factor_on_output=apply_routed_scaling_factor_on_output,
                     )
     elif torch_native and custom_routing_function is None:
