@@ -67,7 +67,7 @@ _is_amx_available = cpu_has_amx_support()
 
 import os
 
-SGLANG_QWEN3_5_ENABLE_ALT_STREAM = (os.getenv("SGLANG_QWEN3_5_ENABLE_ALT_STREAM", "0") == "1")
+SGLANG_QWEN3_ENABLE_ALT_STREAM = (os.getenv("SGLANG_QWEN3_ENABLE_ALT_STREAM", "0") == "1")
 
 class Qwen3GatedDeltaNet(nn.Module):
     def __init__(
@@ -778,7 +778,7 @@ class Qwen3NextModel(nn.Module):
         super().__init__()
         self.config = config
 
-        alt_stream = torch.cuda.Stream() if _is_cuda and SGLANG_QWEN3_5_ENABLE_ALT_STREAM else None
+        alt_stream = torch.cuda.Stream() if _is_cuda and SGLANG_QWEN3_ENABLE_ALT_STREAM else None
 
         self.embed_tokens = VocabParallelEmbedding(
             config.vocab_size,

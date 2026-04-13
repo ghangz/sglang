@@ -111,6 +111,7 @@ _is_npu = is_npu()
 if _is_npu:
     from sgl_kernel_npu.norm.split_qkv_rmsnorm_rope import split_qkv_rmsnorm_rope
 
+SGLANG_QWEN3_ENABLE_ALT_STREAM = (os.getenv("SGLANG_QWEN3_ENABLE_ALT_STREAM", "0") == "1")
 
 def compute_yarn_parameters(
     config: PretrainedConfig,
@@ -917,7 +918,7 @@ class Qwen3MoeModel(Qwen2MoeModel):
         prefix: str = "",
         decoder_layer_type=Qwen3MoeDecoderLayer,
     ) -> None:
-        alt_stream = torch.cuda.Stream() if _is_cuda else None
+        alt_stream = torch.cuda.Stream() if _is_cuda and SGLANG_QWEN3_ENABLE_ALT_STREAM else None
         super().__init__(
             config=config,
             quant_config=quant_config,
