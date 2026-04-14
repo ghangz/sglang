@@ -805,23 +805,33 @@ def invoke_fused_moe_kernel(
         and block_shape is not None
         and block_shape[1] > 0
     ):
-        mctlass_fused_moe_kernel_w4a16(
-            A,
-            B,
-            C,
-            B_scale,
-            B_zp,
-            topk_weights,
-            sorted_token_ids,
-            expert_ids,
-            num_tokens_post_padded,
-            B.shape[1],
-            A.shape[1],
-            sorted_token_ids.shape[0],
-            topk_ids.numel(),
-            top_k,
-            mul_routed_weight
-        )
+        if enable_mctlass_fused_moe_python_api and B_zp is None:
+            # if B_zp is not None:
+            #     group_size = 64
+            # else:
+            #     group_size = 32
+            C1 = C.view(-1, C.size(-1)).contiguous()
+            gemm(
+                A.shape[0], B.shape[1], A.shape[1], B.shape[0], sorted_token_ids.shape[0], top_k, A, B.view(dtype=torch.quint4x2), C1, A_scale, B_scale, None,
+                topk_weights, sorted_token_ids, expert_ids, num_tokens_post_padded, mul_routed_weight, filter_expert = filter_expert,  is_blockwise=True, group_size=32, zp_b=B_zp)
+        else:
+            mctlass_fused_moe_kernel_w4a16(
+                A,
+                B,
+                C,
+                B_scale,
+                B_zp,
+                topk_weights,
+                sorted_token_ids,
+                expert_ids,
+                num_tokens_post_padded,
+                B.shape[1],
+                A.shape[1],
+                sorted_token_ids.shape[0],
+                topk_ids.numel(),
+                top_k,
+                mul_routed_weight
+            )
     elif (
         (use_int8_w8a16 or use_int4_w4a16)
         and block_shape is not None
