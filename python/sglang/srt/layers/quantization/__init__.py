@@ -29,6 +29,7 @@ Fp8Config=None
 from sglang.srt.layers.quantization.fpgemm_fp8 import FBGEMMFp8Config
 from sglang.srt.layers.quantization.gguf import GGUFConfig
 # from sglang.srt.layers.quantization.gptq import GPTQConfig, GPTQMarlinConfig
+from sglang.srt.layers.quantization.gptq import GPTQConfig
 from sglang.srt.layers.quantization.modelopt_quant import (
     ModelOptFp4Config,
     ModelOptFp8Config,
