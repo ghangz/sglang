@@ -439,7 +439,7 @@ class DenoisingStage(PipelineStage):
             * (batch.width // spatial_scale)
             // (patch_size[1] * patch_size[2])
         )
-        seq_len = int(math.ceil(seq_len / get_sp_world_size())) * get_sp_world_size()
+        # seq_len = int(math.ceil(seq_len / get_sp_world_size())) * get_sp_world_size()
         return seq_len, z, reserved_frames_masks
 
     def _postprocess_latents_for_ti2v(self, z, reserved_frames_masks, batch):
@@ -922,6 +922,7 @@ class DenoisingStage(PipelineStage):
             if get_sp_world_size() > 1 and getattr(
                 batch, "did_sp_shard_latents", False
             ):
+                seq_len_rounded = int(math.ceil(seq_len / get_sp_world_size())) * get_sp_world_size()
                 local_seq_len = seq_len // get_sp_world_size()
 
             if get_sp_parallel_rank() == 0 and reserved_frames_mask is not None:

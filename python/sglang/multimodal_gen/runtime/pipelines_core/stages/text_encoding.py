@@ -270,8 +270,8 @@ class TextEncodingStage(PipelineStage):
                 "attention_mask": attention_mask,
                 "output_hidden_states": True,
             }
-            if "use_cache" in inspect.signature(text_encoder.forward).parameters:
-                encoder_forward_kwargs["use_cache"] = False
+            # if "use_cache" in inspect.signature(text_encoder.forward).parameters:
+                # encoder_forward_kwargs["use_cache"] = False
             with set_forward_context(current_timestep=0, attn_metadata=None):
                 outputs: BaseEncoderOutput = text_encoder(**encoder_forward_kwargs)
             postprocess_sig = inspect.signature(postprocess_func)
