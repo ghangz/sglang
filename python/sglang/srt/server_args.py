@@ -6190,6 +6190,15 @@ class ServerArgs:
         if hasattr(self, "model_config"):
             return self.model_config
         self.model_config = ModelConfig.from_server_args(self)
+        
+        # cache huggingface for mtp to avoid mutiprocess problem 
+        if self.speculative_draft_model_path is not None:
+            ModelConfig.from_server_args(
+                self,
+                model_path=self.speculative_draft_model_path,
+                model_revision=self.speculative_draft_model_revision,
+                is_draft_model=True,
+            )
         return self.model_config
 
     def get_attention_backends(self):
