@@ -1828,6 +1828,9 @@ class ServerArgs:
                 ), "Triton kernel MoE is only supported when ep_size == 1"
 
         elif "MiMoV2FlashForCausalLM" in model_arch:
+            if self.speculative_algorithm == "NEXTN":
+                self.speculative_algorithm == "EAGLE"
+                
             if self.speculative_algorithm == "EAGLE":
                 self.enable_multi_layer_eagle = True
                 logger.info(

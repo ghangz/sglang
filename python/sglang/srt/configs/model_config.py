@@ -376,6 +376,7 @@ class ModelConfig:
             "MiMoV2MTP",
             "Gemma4ForCausalLM",
             "Gemma4ForConditionalGeneration",
+            # "MiMoV2ProForCausalLM",
         ]
 
     def _derive_context_length(self, context_length: int):

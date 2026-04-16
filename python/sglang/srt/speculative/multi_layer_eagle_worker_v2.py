@@ -32,6 +32,7 @@ from sglang.srt.speculative.eagle_utils import TreeMaskMode, build_tree_kernel_e
 from sglang.srt.speculative.multi_layer_eagle_draft_extend_cuda_graph_runner import (
     MultiLayerEagleMultiStepDraftExtendCudaGraphRunner,
 )
+from sglang.srt.speculative.draft_utils import DraftBackendFactory
 from sglang.srt.speculative.multi_layer_eagle_utils import (
     assign_hidden_states_pool_triton,
     rotate_input_ids_triton,
@@ -182,20 +183,35 @@ class MultiLayerEagleDraftWorker(BaseDraftWorker):
         # Create attn backends
         self.draft_extend_attn_backend_list = []
         for step in range(self.speculative_num_steps):
-            from sglang.srt.layers.attention.flashattention_backend import (
-                FlashAttentionBackend,
-            )
+            # from sglang.srt.layers.attention.flashattention_backend import (
+            #     FlashAttentionBackend,
+            # )
 
-            self.draft_extend_attn_backend_list.append(
-                FlashAttentionBackend(
-                    model_runner=self.draft_runner_list[step],
-                    skip_prefill=False,
-                    speculative_step_id=step,
-                )
+            # self.draft_extend_attn_backend_list.append(
+            #     FlashAttentionBackend(
+            #         model_runner=self.draft_runner_list[step],
+            #         skip_prefill=False,
+            #         speculative_step_id=step,
+            #     )
+            # )
+            # self.draft_runner_list[step].attn_backend = (
+            #     self.draft_extend_attn_backend_list[-1]
+            # )
+            backend_factory = DraftBackendFactory(
+                self.server_args,
+                self.draft_runner_list[step],
+                self.topk,
+                self.speculative_num_steps,
             )
-            self.draft_runner_list[step].attn_backend = (
-                self.draft_extend_attn_backend_list[-1]
-            )
+            backend = backend_factory.create_draft_extend_backend()
+
+            # Set per-step id if supported (FlashAttention uses it for spec decode metadata)
+            if hasattr(backend, "speculative_step_id"):
+                backend.speculative_step_id = step
+
+            self.draft_extend_attn_backend_list.append(backend)
+            self.draft_runner_list[step].attn_backend = backend
+        
 
     def init_cuda_graphs(self):
         """Capture cuda graphs."""

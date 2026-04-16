@@ -33,7 +33,7 @@ dependencies = [
   "modelscope",
   "msgspec",
   "ninja",
-  "numpy",
+  "numpy==1.26.4",
   "openai-harmony==0.0.4",
   "openai==2.6.1",
   "orjson",
