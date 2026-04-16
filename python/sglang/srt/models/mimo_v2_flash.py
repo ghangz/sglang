@@ -1108,7 +1108,17 @@ class MiMoV2FlashForCausalLM(nn.Module):
             # TODO: skip mtp weights for now, need to implement mtp
             if "mtp" in name:
                 continue
-
+            
+            # Support fused qkv_proj checkpoints (MiMoV2Pro format).
+            if "qkv_proj" in name:
+                if name in params_dict:
+                    tp_size = get_attention_tp_size()
+                    tp_rank = get_attention_tp_rank()
+                    param = params_dict[name]
+                    loaded_weight = loaded_weight.chunk(tp_size, dim=0)[tp_rank]
+                    default_weight_loader(param, loaded_weight)
+                continue
+            
             for param_name, weight_name, shard_id in stacked_params_mapping:
                 if weight_name not in name:
                     continue
@@ -1195,4 +1205,8 @@ class MiMoV2FlashForCausalLM(nn.Module):
         )
 
 
-EntryClass = MiMoV2FlashForCausalLM
+class MiMoV2ProForCausalLM(MiMoV2FlashForCausalLM):
+    pass
+
+
+EntryClass = [MiMoV2FlashForCausalLM, MiMoV2ProForCausalLM]

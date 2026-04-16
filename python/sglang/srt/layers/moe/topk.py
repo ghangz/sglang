@@ -1075,15 +1075,19 @@ def select_experts(
             )
         else:
             glm = (top_k == 9 and num_expert_group == 1 and topk_group == 1) and (router_logits.shape[1] == 160 or router_logits.shape[1] == 256)
-            mimo = (top_k == 8 and num_expert_group == 1 and topk_group == 1) and (router_logits.shape[1] == 256 or router_logits.shape[1] == 256)
-            support = (not glm) and (not mimo)
+            mimo_flash = (top_k == 8 and num_expert_group == 1 and topk_group == 1) and (router_logits.shape[1] == 256 or router_logits.shape[1] == 256)
+            mimo_pro = (top_k == 8 and num_expert_group == 1 and topk_group == 1) and (router_logits.shape[1] == 384 or router_logits.shape[1] == 384)
+            support = (not glm) and (not mimo_flash) and (not mimo_pro)
             if (router_logits.shape[1] // num_expert_group <= 384) and support:
                 deepseek = (top_k == 8 and num_expert_group == 8 and topk_group == 4) or (top_k == 9 and num_expert_group == 8 and topk_group == 4)
                 kimi = (top_k == 8 and num_expert_group == 1 and topk_group == 1) or (top_k == 9 and num_expert_group == 1 and topk_group == 1)
                 if kimi or deepseek:
                     topk_ids = torch.empty((hidden_states.shape[0], top_k), dtype=torch.int, device=hidden_states.device)
                     topk_weights = torch.empty((hidden_states.shape[0], top_k), dtype=torch.float, device=hidden_states.device)
-                    bias_bf16 = correction_bias.to(torch.bfloat16)
+                    if correction_bias.dtype == torch.float32:
+                        bias_bf16 = correction_bias
+                    else:
+                        bias_bf16 = correction_bias.to(torch.bfloat16)
                     fused_moe_gate_opt(
                         router_logits,
                         bias_bf16,

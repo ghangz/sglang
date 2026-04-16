@@ -28,6 +28,7 @@ from sglang.srt.layers.communicator import (
 )
 from sglang.srt.layers.dp_attention import (
     get_attention_tp_rank,
+    get_attention_tp_size,
     is_dp_attention_enabled,
 )
 from sglang.srt.layers.layernorm import RMSNorm
@@ -295,6 +296,16 @@ class MiMoV2MTP(MiMoV2FlashForCausalLM):
             if name.startswith("model.vision_tower") and name not in params_dict:
                 continue
             name = self.map_model_name_to_mtp_param_name(name)
+
+            # Support fused qkv_proj checkpoints (MiMoV2Pro format).
+            if "qkv_proj" in name:
+                if name in params_dict:
+                    tp_size = get_attention_tp_size()
+                    tp_rank = get_attention_tp_rank()
+                    param = params_dict[name]
+                    loaded_weight = loaded_weight.chunk(tp_size, dim=0)[tp_rank]
+                    default_weight_loader(param, loaded_weight)
+                continue
 
             for param_name, weight_name, shard_id in stacked_params_mapping:
 
