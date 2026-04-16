@@ -1803,7 +1803,7 @@ class MLATokenToKVPoolFP4(MLATokenToKVPool):
 
 class NSATokenToKVPool(MLATokenToKVPool):
     quant_block_size = 128
-    index_k_with_scale_buffer_dtype = torch.uint8
+    index_k_with_scale_buffer_dtype = torch.bfloat16
     rope_storage_dtype = torch.bfloat16  # rope is always stored in bf16
 
     def __init__(
@@ -1859,22 +1859,27 @@ class NSATokenToKVPool(MLATokenToKVPool):
             else nullcontext()
         ):
             self.index_k_with_scale_buffer = [
+                # torch.zeros(
+                #     # Layout:
+                #     #     ref: test_attention.py :: kv_cache_cast_to_fp8
+                #     #     shape: (num_pages, page_size 64 * head_dim 128 + page_size 64 * fp32_nbytes 4)
+                #     #     data: for page i,
+                #     #         * buf[i, :page_size * head_dim] for fp8 data
+                #     #         * buf[i, page_size * head_dim:].view(float32) for scale
+                #     (
+                #         (index_buf_size + page_size + 1) // self.page_size,
+                #         self.page_size
+                #         * (
+                #             index_head_dim + index_head_dim // self.quant_block_size * 4
+                #         ),
+                #     ),
+                #     dtype=self.index_k_with_scale_buffer_dtype,
+                #     device=device,
+                # )
                 torch.zeros(
-                    # Layout:
-                    #     ref: test_attention.py :: kv_cache_cast_to_fp8
-                    #     shape: (num_pages, page_size 64 * head_dim 128 + page_size 64 * fp32_nbytes 4)
-                    #     data: for page i,
-                    #         * buf[i, :page_size * head_dim] for fp8 data
-                    #         * buf[i, page_size * head_dim:].view(float32) for scale
-                    (
-                        (index_buf_size + page_size + 1) // self.page_size,
-                        self.page_size
-                        * (
-                            index_head_dim + index_head_dim // self.quant_block_size * 4
-                        ),
-                    ),
-                    dtype=self.index_k_with_scale_buffer_dtype,
-                    device=device,
+                        ((size + page_size + 1) // self.page_size, self.page_size * self.index_head_dim),
+                        dtype=self.index_k_with_scale_buffer_dtype,
+                        device=device,
                 )
                 for _ in range(layer_num)
             ]
@@ -1883,6 +1888,8 @@ class NSATokenToKVPool(MLATokenToKVPool):
     def get_index_k_with_scale_buffer(self, layer_id: int) -> torch.Tensor:
         if self.layer_transfer_counter is not None:
             self.layer_transfer_counter.wait_until(layer_id - self.start_layer)
+        if self.store_dtype != self.dtype:
+            assert False, "NSATokenToKVPool dtype error"
         return self.index_k_with_scale_buffer[layer_id - self.start_layer]
 
     def get_index_k_continuous(
@@ -1892,6 +1899,8 @@ class NSATokenToKVPool(MLATokenToKVPool):
         page_indices: torch.Tensor,
     ):
         buf = self.index_k_with_scale_buffer[layer_id - self.start_layer]
+        if self.store_dtype != self.dtype:
+            assert False, "NSATokenToKVPool dtype error"
         return index_buf_accessor.GetK.execute(
             self, buf, seq_len=seq_len, page_indices=page_indices
         )
@@ -1941,7 +1950,7 @@ class NSATokenToKVPool(MLATokenToKVPool):
         layer_id: int,
         loc: torch.Tensor,
         index_k: torch.Tensor,
-        index_k_scale: torch.Tensor,
+        index_k_scale: Optional[torch.Tensor] = None,
     ) -> None:
         buf = self.index_k_with_scale_buffer[layer_id - self.start_layer]
         index_buf_accessor.SetKAndS.execute(
