@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from sglang.srt.server_args import ServerArgs
     from sglang.srt.speculative.base_spec_worker import BaseSpecWorker
     from sglang.srt.speculative.ngram_worker import NGRAMWorker
+    from sglang.srt.speculative.suffix_worker import SuffixWorker
 
 
 class SpeculativeAlgorithm(Enum):
@@ -20,6 +21,7 @@ class SpeculativeAlgorithm(Enum):
     STANDALONE = auto()
     NGRAM = auto()
     NONE = auto()
+    SUFFIX = auto()
 
     @classmethod
     def from_string(cls, name: Optional[str]) -> SpeculativeAlgorithm:
@@ -46,12 +48,15 @@ class SpeculativeAlgorithm(Enum):
     def is_ngram(self) -> bool:
         return self == SpeculativeAlgorithm.NGRAM
 
+    def is_suffix(self) -> bool:
+        return self == SpeculativeAlgorithm.SUFFIX
+
     def supports_spec_v2(self) -> bool:
         return self.is_eagle() or self.is_standalone()
 
     def create_worker(
         self, server_args: ServerArgs
-    ) -> Optional[Union[Type[BaseSpecWorker], Type[TpModelWorker], Type[NGRAMWorker]]]:
+    ) -> Optional[Union[Type[BaseSpecWorker], Type[TpModelWorker], Type[NGRAMWorker], Type[SuffixWorker]]]:
         assert (
             not self.is_none()
         ), "Cannot create worker for NONE speculative algorithm."
@@ -102,7 +107,18 @@ class SpeculativeAlgorithm(Enum):
 
             return NGRAMWorker
 
+        elif self.is_suffix():
+            if enable_overlap:
+                raise ValueError(
+                    f"Speculative algorithm {self.name} does not support overlap worker creation."
+                )
+            from sglang.srt.speculative.suffix_worker import SuffixWorker
+
+            return SuffixWorker
+
         raise ValueError("Unreachable code path in create_worker.")
+
+
 
 
 class SpecInputType(IntEnum):
@@ -111,6 +127,7 @@ class SpecInputType(IntEnum):
     EAGLE_DRAFT = auto()
     EAGLE_VERIFY = auto()
     NGRAM_VERIFY = auto()
+    SUFFIX_VERIFY = auto()
 
 
 class SpecInput(ABC):
@@ -126,6 +143,7 @@ class SpecInput(ABC):
         return self.spec_input_type in {
             SpecInputType.EAGLE_VERIFY,
             SpecInputType.NGRAM_VERIFY,
+            SpecInputType.SUFFIX_VERIFY,
         }
 
     @abstractmethod

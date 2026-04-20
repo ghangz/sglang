@@ -199,6 +199,10 @@ class ModelRunnerKVCacheMixin:
             total_rest_memory = total_rest_memory - (
                 mamba_state_intermediate_size / (1 << 30)
             )
+            if total_rest_memory < 5:
+                logging.warning(
+                    f"Mamba_state_intermediate_size may be too large, please check the speculative_num_draft_tokens (When NGRAM/SUFFIX is enabled, this value may be subject to change)"
+                )
 
         if server_args.max_mamba_cache_size is not None:
             # Use explicitly set max_mamba_cache_size

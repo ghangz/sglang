@@ -30,10 +30,10 @@ class NGRAMWorker:
         tp_rank: int,
         dp_rank: Optional[int],
         moe_ep_rank: int,
-        attn_cp_rank: int,
-        moe_dp_rank: int,
         nccl_port: int,
         target_worker: TpModelWorker,
+        attn_cp_rank: int,
+        moe_dp_rank: int,
     ):
         self.target_worker = target_worker
         self.model_runner = target_worker.model_runner

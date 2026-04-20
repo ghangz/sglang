@@ -3473,6 +3473,9 @@ def get_nvidia_driver_version_str() -> str:
     except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
         return None
 
+@lru_cache(maxsize=1)
+def is_arctic_inference_available() -> bool:
+    return importlib.util.find_spec("arctic_inference") is not None
 
 def check_cuda_result(raw_output):
     import cuda.bindings.runtime as cuda_rt
