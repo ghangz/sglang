@@ -1084,7 +1084,7 @@ def select_experts(
                 if kimi or deepseek:
                     topk_ids = torch.empty((hidden_states.shape[0], top_k), dtype=torch.int, device=hidden_states.device)
                     topk_weights = torch.empty((hidden_states.shape[0], top_k), dtype=torch.float, device=hidden_states.device)
-                    if correction_bias.dtype == torch.float32:
+                    if correction_bias.dtype == torch.bfloat16:
                         bias_bf16 = correction_bias
                     else:
                         bias_bf16 = correction_bias.to(torch.bfloat16)

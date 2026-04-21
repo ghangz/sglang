@@ -561,11 +561,7 @@ def fused_experts_impl(
             stage1_config["BLOCK_SIZE_M"] = kernel_m
             stage2_config["BLOCK_SIZE_M"] = kernel_m
             
-        elif enable_mctlass_fused_moe_python_api:
-            kernel_m = gemm.get_kernel_m(curr_hidden_states, w1, intermediate_cache1, w1.shape[0], curr_hidden_states.shape[0], w1.shape[1], curr_hidden_states.shape[1], topk_ids.shape[1])
-            assert kernel_m > 0, ("cutlass_fused_moe_bf16 BLOCK_SIZE_M must greater than zero.")
-            stage1_config["BLOCK_SIZE_M"] = kernel_m
-            stage2_config["BLOCK_SIZE_M"] = kernel_m 
+        
             
         elif enable_maca_sglang_fused_moe_mctlass_w4a16 and use_int4_w4a16:
             if enable_mctlass_fused_moe_python_api and w1_zp is None:
@@ -577,6 +573,12 @@ def fused_experts_impl(
             assert kernel_m > 0, ("cutlass_fused_moe_w4a16 BLOCK_SIZE_M must greater than zero.")
             stage1_config["BLOCK_SIZE_M"] = kernel_m
             stage2_config["BLOCK_SIZE_M"] = kernel_m
+            
+        elif enable_mctlass_fused_moe_python_api:
+            kernel_m = gemm.get_kernel_m(curr_hidden_states, w1, intermediate_cache1, w1.shape[0], curr_hidden_states.shape[0], w1.shape[1], curr_hidden_states.shape[1], topk_ids.shape[1])
+            assert kernel_m > 0, ("cutlass_fused_moe_bf16 BLOCK_SIZE_M must greater than zero.")
+            stage1_config["BLOCK_SIZE_M"] = kernel_m
+            stage2_config["BLOCK_SIZE_M"] = kernel_m 
             
         sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
             curr_topk_ids, stage1_config["BLOCK_SIZE_M"], E
