@@ -1846,6 +1846,9 @@ class ServerArgs:
         elif any(
             x in model_arch for x in ("MiMoV2FlashForCausalLM", "MiMoV2ProForCausalLM")
         ):
+            if self.speculative_algorithm == "NEXTN":
+                self.speculative_algorithm == "EAGLE"
+                
             if self.speculative_algorithm == "EAGLE":
                 self.enable_multi_layer_eagle = True
                 logger.info(

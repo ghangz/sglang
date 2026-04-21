@@ -159,11 +159,12 @@ class FlashAttentionBackend(AttentionBackend):
         # Select version
         self.fa_impl_ver = fa_impl_ver
         if self.fa_impl_ver == 3:
-            from sgl_kernel.flash_attn import (
+            from flash_attn import (
                 flash_attn_varlen_func,
                 flash_attn_with_kvcache,
             )
         elif self.fa_impl_ver == 4:
+            raise ValueError(f"Current MACA Invalid version: {self.fa_impl_ver=}")
             from sglang.jit_kernel.flash_attention_v4 import (
                 flash_attn_varlen_func,
                 flash_attn_with_kvcache,
@@ -637,6 +638,7 @@ class FlashAttentionBackend(AttentionBackend):
             cache_seqlens = swa_spec_metadata.cache_seqlens_int32
             max_seqlen_q = swa_spec_metadata.max_seq_len_q
             cu_seqlens_k = swa_spec_metadata.cu_seqlens_k
+            max_seqlen_k = swa_spec_metadata.max_seq_len_k
         else:
             page_table = metadata.page_table
             if is_swa_layer and self.use_sliding_window_kv_pool:
@@ -650,6 +652,7 @@ class FlashAttentionBackend(AttentionBackend):
             cache_seqlens = metadata.cache_seqlens_int32
             max_seqlen_q = metadata.max_seq_len_q
             cu_seqlens_k = metadata.cu_seqlens_k
+            max_seqlen_k = metadata.max_seq_len_k
 
         # Use Flash Attention for prefill
         if not self.use_mla:
@@ -679,52 +682,134 @@ class FlashAttentionBackend(AttentionBackend):
                 def _fa_cp_attn(
                     q_chunk, cu_seqlens_q_cp, cache_seqlens_cp, max_seqlen_q_cp
                 ):
-                    return flash_attn_with_kvcache(
-                        q=q_chunk,
+                    # assert True, "mimo need fit"
+                    if forward_batch.forward_mode.is_target_verify() or forward_batch.forward_mode.is_draft_extend_v2():
+                        return flash_attn_with_kvcache(
+                            q=q_chunk,
+                            k_cache=key_cache,
+                            v_cache=value_cache,
+                            block_table=page_table,
+                            cache_seqlens=cache_seqlens_cp,
+                            # cu_seqlens_q=cu_seqlens_q,
+                            # cu_seqlens_k_new=cu_seqlens_k if not use_local_attn else None,
+                            # max_seqlen_q=max_seqlen_q,
+                            softmax_scale=layer.scaling,
+                            causal=False if use_cascade_attn else causal,
+                            window_size=window_size,
+                            softcap=layer.logit_cap,
+                            s_aux=sinks,
+                            # k_descale=k_descale,
+                            # v_descale=v_descale,
+                            # return_softmax_lse=use_cascade_attn,
+                            # num_splits=self.num_splits,
+                            # **kwargs,
+                        )
+                    else:
+                        return flash_attn_varlen_func(
+                            q=q_chunk,
+                            k=key_cache,
+                            v=value_cache,
+                            block_table=page_table,
+                            cu_seqlens_q=cu_seqlens_q_cp,
+                            cu_seqlens_k=cu_seqlens_k,
+                            max_seqlen_q=max_seqlen_q_cp,
+                            max_seqlen_k=max_seqlen_k,
+                            softmax_scale=layer.scaling,
+                            causal=False if use_cascade_attn else causal,
+                            window_size=window_size,
+                            softcap=layer.logit_cap,
+                            s_aux=sinks,
+                        )
+                    # return flash_attn_with_kvcache(
+                    #     q=q_chunk,
+                    #     k_cache=key_cache,
+                    #     v_cache=value_cache,
+                    #     page_table=page_table,
+                    #     cache_seqlens=cache_seqlens_cp,
+                    #     cu_seqlens_q=cu_seqlens_q_cp,
+                    #     cu_seqlens_k_new=cu_seqlens_k if not use_local_attn else None,
+                    #     max_seqlen_q=max_seqlen_q_cp,
+                    #     softmax_scale=layer.scaling,
+                    #     causal=False if use_cascade_attn else causal,
+                    #     window_size=window_size,
+                    #     softcap=layer.logit_cap,
+                    #     k_descale=k_descale,
+                    #     v_descale=v_descale,
+                    #     return_softmax_lse=use_cascade_attn,
+                    #     num_splits=self.num_splits,
+                    #     **kwargs,
+                    # )
+                if forward_batch.forward_mode.is_target_verify() or forward_batch.forward_mode.is_draft_extend_v2():
+                    result = cp_attn_forward_extend(
+                        forward_batch,
+                        q.contiguous().view(page_table.shape[0], -1, layer.tp_q_head_num, layer.head_dim),
+                        self.device,
+                        _fa_cp_attn,
+                    )
+                else:
+                    result = cp_attn_forward_extend(
+                        forward_batch,
+                        q.contiguous().view(-1, layer.tp_q_head_num, layer.head_dim),
+                        self.device,
+                        _fa_cp_attn,
+                    )
+            else:
+                # result = flash_attn_with_kvcache(
+                #     q=q.contiguous().view(-1, layer.tp_q_head_num, layer.head_dim),
+                #     k_cache=key_cache,
+                #     v_cache=value_cache,
+                #     page_table=page_table,
+                #     cache_seqlens=cache_seqlens,
+                #     cu_seqlens_q=cu_seqlens_q,
+                #     cu_seqlens_k_new=cu_seqlens_k if not use_local_attn else None,
+                #     max_seqlen_q=max_seqlen_q,
+                #     softmax_scale=layer.scaling,
+                #     causal=False if use_cascade_attn else causal,
+                #     window_size=window_size,
+                #     softcap=layer.logit_cap,
+                #     k_descale=k_descale,
+                #     v_descale=v_descale,
+                #     return_softmax_lse=use_cascade_attn,
+                #     num_splits=self.num_splits,
+                #     **kwargs,
+                # )
+                if forward_batch.forward_mode.is_target_verify() or forward_batch.forward_mode.is_draft_extend_v2():
+                    result = flash_attn_with_kvcache(
+                        q=q.contiguous().view(page_table.shape[0], -1, layer.tp_q_head_num, layer.head_dim),
                         k_cache=key_cache,
                         v_cache=value_cache,
-                        page_table=page_table,
-                        cache_seqlens=cache_seqlens_cp,
-                        cu_seqlens_q=cu_seqlens_q_cp,
-                        cu_seqlens_k_new=cu_seqlens_k if not use_local_attn else None,
-                        max_seqlen_q=max_seqlen_q_cp,
+                        block_table=page_table,
+                        cache_seqlens=cache_seqlens,
+                        # cu_seqlens_q=cu_seqlens_q,
+                        # cu_seqlens_k_new=cu_seqlens_k if not use_local_attn else None,
+                        # max_seqlen_q=max_seqlen_q,
                         softmax_scale=layer.scaling,
                         causal=False if use_cascade_attn else causal,
                         window_size=window_size,
                         softcap=layer.logit_cap,
-                        k_descale=k_descale,
-                        v_descale=v_descale,
-                        return_softmax_lse=use_cascade_attn,
-                        num_splits=self.num_splits,
-                        **kwargs,
+                        s_aux=sinks,
+                        # k_descale=k_descale,
+                        # v_descale=v_descale,
+                        # return_softmax_lse=use_cascade_attn,
+                        # num_splits=self.num_splits,
+                        # **kwargs,
                     )
-
-                result = cp_attn_forward_extend(
-                    forward_batch,
-                    q.contiguous().view(-1, layer.tp_q_head_num, layer.head_dim),
-                    self.device,
-                    _fa_cp_attn,
-                )
-            else:
-                result = flash_attn_with_kvcache(
-                    q=q.contiguous().view(-1, layer.tp_q_head_num, layer.head_dim),
-                    k_cache=key_cache,
-                    v_cache=value_cache,
-                    page_table=page_table,
-                    cache_seqlens=cache_seqlens,
-                    cu_seqlens_q=cu_seqlens_q,
-                    cu_seqlens_k_new=cu_seqlens_k if not use_local_attn else None,
-                    max_seqlen_q=max_seqlen_q,
-                    softmax_scale=layer.scaling,
-                    causal=False if use_cascade_attn else causal,
-                    window_size=window_size,
-                    softcap=layer.logit_cap,
-                    k_descale=k_descale,
-                    v_descale=v_descale,
-                    return_softmax_lse=use_cascade_attn,
-                    num_splits=self.num_splits,
-                    **kwargs,
-                )
+                else:
+                    result = flash_attn_varlen_func(
+                        q=q.view(-1, layer.tp_q_head_num, layer.head_dim),
+                        k=key_cache,
+                        v=value_cache,
+                        block_table=page_table,
+                        cu_seqlens_q=cu_seqlens_q,
+                        cu_seqlens_k=cu_seqlens_k,
+                        max_seqlen_q=max_seqlen_q,
+                        max_seqlen_k=max_seqlen_k,
+                        softmax_scale=layer.scaling,
+                        causal=False if use_cascade_attn else causal,
+                        window_size=window_size,
+                        softcap=layer.logit_cap,
+                        s_aux=sinks,
+                    )
 
             if use_cascade_attn:
                 o, softmax_lse, *rest = result
@@ -1046,7 +1131,7 @@ class FlashAttentionBackend(AttentionBackend):
                 cu_seqlens_k = metadata.cu_seqlens_k
                 max_seqlen_q = metadata.max_seq_len_q
                 q_reshaped = q.contiguous().view(
-                    -1, layer.tp_q_head_num, layer.head_dim
+                    -1, 1, layer.tp_q_head_num, layer.head_dim
                 )
 
                 # Default: single-token self-attention
@@ -1054,19 +1139,20 @@ class FlashAttentionBackend(AttentionBackend):
                     q=q_reshaped,
                     k_cache=key_cache,
                     v_cache=value_cache,
-                    page_table=page_table,
+                    block_table=page_table,
                     cache_seqlens=cache_seqlens,
-                    cu_seqlens_q=metadata.cu_seqlens_q,
-                    max_seqlen_q=max_seqlen_q,
+                    # cu_seqlens_q=metadata.cu_seqlens_q,
+                    # max_seqlen_q=max_seqlen_q,
                     softmax_scale=layer.scaling,
                     causal=False if use_cascade_attn else causal,
                     window_size=window_size,
                     softcap=layer.logit_cap,
-                    k_descale=k_descale,
-                    v_descale=v_descale,
-                    return_softmax_lse=use_cascade_attn,
-                    num_splits=self.num_splits,
-                    **kwargs,
+                    s_aux=sinks,
+                    # k_descale=k_descale,
+                    # v_descale=v_descale,
+                    # return_softmax_lse=use_cascade_attn,
+                    # num_splits=self.num_splits,
+                    # **kwargs,
                 )
                 if use_cascade_attn:
                     o, softmax_lse, *rest = result
