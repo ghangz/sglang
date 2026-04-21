@@ -1832,6 +1832,9 @@ class NativeSparseAttnBackend(
             )
 
         # Use FA3 for SM90 (Hopper/H200)
+        fa_version = 3
+        from flash_attn import flash_attn_varlen_func
+
         return flash_attn_varlen_func(
             q=q,
             k=k,
@@ -1842,6 +1845,7 @@ class NativeSparseAttnBackend(
             max_seqlen_k=max_seqlen_k,
             softmax_scale=layer.scaling,
             causal=causal,
+            # ver=fa_version,
         )
 
     def _forward_tilelang(
@@ -2119,7 +2123,7 @@ class NativeSparseAttnBackend(
             # Requirements: H200/B200, short sequences, supported dtype, fits in chunk
             self.use_mha = (
                 (
-                    device_sm == 90 or (device_sm >= 100 and device_sm < 110)
+                    device_sm == 80 or device_sm == 90 or (device_sm >= 100 and device_sm < 110)
                 )  # SM90/SM100 only
                 and max_kv_len
                 <= envs.SGLANG_NSA_PREFILL_DENSE_ATTN_KV_LEN_THRESHOLD.get()  # Short enough for MHA

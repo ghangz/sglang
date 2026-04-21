@@ -1175,9 +1175,8 @@ class DeepseekV2AttentionMLA(
                 quant_config=quant_config,
                 prefix=add_prefix("kv_a_proj_with_mqa", prefix),
             )
-
-        self.skip_topk = None
-        self.next_skip_topk = None
+        self.skip_topk = False
+        self.next_skip_topk = False
         if self.use_nsa:
             is_neox_style = not getattr(config, "indexer_rope_interleave", False)
             self.indexer = Indexer(

@@ -63,6 +63,7 @@ from sglang.srt.utils import (
     next_power_of_2,
 )
 from sglang.srt.utils.torch_memory_saver_adapter import TorchMemorySaverAdapter
+import os
 
 if TYPE_CHECKING:
     from sglang.srt.managers.cache_controller import LayerDoneCounter
@@ -1803,7 +1804,8 @@ class MLATokenToKVPoolFP4(MLATokenToKVPool):
 
 class NSATokenToKVPool(MLATokenToKVPool):
     quant_block_size = 128
-    index_k_with_scale_buffer_dtype = torch.bfloat16
+    int8_cache = True if os.getenv("MX_ENABLE_NSA_INT8") else False 
+    index_k_with_scale_buffer_dtype = torch.uint8 if os.getenv("MX_ENABLE_NSA_INT8") else torch.bfloat16
     rope_storage_dtype = torch.bfloat16  # rope is always stored in bf16
 
     def __init__(
@@ -1857,39 +1859,42 @@ class NSATokenToKVPool(MLATokenToKVPool):
             torch.cuda.use_mem_pool(self.custom_mem_pool)
             if self.custom_mem_pool
             else nullcontext()
-        ):
-            self.index_k_with_scale_buffer = [
-                # torch.zeros(
-                #     # Layout:
-                #     #     ref: test_attention.py :: kv_cache_cast_to_fp8
-                #     #     shape: (num_pages, page_size 64 * head_dim 128 + page_size 64 * fp32_nbytes 4)
-                #     #     data: for page i,
-                #     #         * buf[i, :page_size * head_dim] for fp8 data
-                #     #         * buf[i, page_size * head_dim:].view(float32) for scale
-                #     (
-                #         (index_buf_size + page_size + 1) // self.page_size,
-                #         self.page_size
-                #         * (
-                #             index_head_dim + index_head_dim // self.quant_block_size * 4
-                #         ),
-                #     ),
-                #     dtype=self.index_k_with_scale_buffer_dtype,
-                #     device=device,
-                # )
-                torch.zeros(
-                        ((size + page_size + 1) // self.page_size, self.page_size * self.index_head_dim),
+        ):  
+            if self.int8_cache:
+                self.index_k_with_scale_buffer = [
+                    torch.zeros(
+                        # Layout:
+                        #     ref: test_attention.py :: kv_cache_cast_to_fp8
+                        #     shape: (num_pages, page_size 64 * head_dim 128 + page_size 64 * fp32_nbytes 4)
+                        #     data: for page i,
+                        #         * buf[i, :page_size * head_dim] for fp8 data
+                        #         * buf[i, page_size * head_dim:].view(float32) for scale
+                        (
+                            (index_buf_size + page_size + 1) // self.page_size,
+                            self.page_size
+                            * (
+                                index_head_dim + index_head_dim // self.quant_block_size * 4
+                            ),
+                        ),
                         dtype=self.index_k_with_scale_buffer_dtype,
                         device=device,
-                )
-                for _ in range(layer_num)
-            ]
+                    )
+                    for _ in range(layer_num)
+                ]
+            else:
+                self.index_k_with_scale_buffer = [
+                    torch.zeros(
+                            ((index_buf_size + page_size + 1) // self.page_size, self.page_size * self.index_head_dim),
+                            dtype=self.index_k_with_scale_buffer_dtype,
+                            device=device,
+                    )
+                    for _ in range(layer_num)
+                ]
         self._finalize_allocation_log(size)
 
     def get_index_k_with_scale_buffer(self, layer_id: int) -> torch.Tensor:
         if self.layer_transfer_counter is not None:
             self.layer_transfer_counter.wait_until(layer_id - self.start_layer)
-        if self.store_dtype != self.dtype:
-            assert False, "NSATokenToKVPool dtype error"
         return self.index_k_with_scale_buffer[layer_id - self.start_layer]
 
     def get_index_k_continuous(
@@ -1899,8 +1904,6 @@ class NSATokenToKVPool(MLATokenToKVPool):
         page_indices: torch.Tensor,
     ):
         buf = self.index_k_with_scale_buffer[layer_id - self.start_layer]
-        if self.store_dtype != self.dtype:
-            assert False, "NSATokenToKVPool dtype error"
         return index_buf_accessor.GetK.execute(
             self, buf, seq_len=seq_len, page_indices=page_indices
         )
@@ -1944,6 +1947,36 @@ class NSATokenToKVPool(MLATokenToKVPool):
             seq_len_sum=seq_len_sum,
             max_seq_len=max_seq_len,
         )
+
+    def get_index_batched_k_buffer(
+        self,
+        layer_id: int,
+        seq_len_tensor: torch.Tensor,
+        page_indices: torch.Tensor,
+        seq_len_sum: int,
+        max_seq_len: int,
+    ):
+        """
+        Fused method to get multi batch index K in a single call using Triton.
+        More efficient than calling get_index_k_continuous separately.
+
+        :param layer_id: Layer index
+        :param seq_len_tensor: multi-bacth Sequence length
+        :param page_indices: Page indices tensor
+        :param seq_len_sum: sum of multi-batch seq len
+        :param max_seq_len: max len of multi-batch seq
+        :return: k_fp8: (seq_len, index_head_dim), dtype is same to buf
+        """
+        buf = self.index_k_with_scale_buffer[layer_id - self.start_layer]
+        return index_buf_accessor.GetBatchedK.execute(
+            self,
+            buf,
+            page_indices=page_indices,
+            seq_len_tensor=seq_len_tensor,
+            seq_len_sum=seq_len_sum,
+            max_seq_len=max_seq_len,
+        )
+
 
     def set_index_k_scale_buffer(
         self,
