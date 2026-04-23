@@ -98,6 +98,25 @@ class DeepGemmRunnerOutput(RunnerOutput):
     def runner_backend(self) -> MoeRunnerBackend:
         return MoeRunnerBackend.DEEP_GEMM
 
+@dataclass
+class DeepGemmMoeCompressedInfo(MoeQuantInfo):
+    w13_weight: torch.Tensor
+    w2_weight: torch.Tensor
+    b13: Optional[torch.Tensor] = None
+    b2: Optional[torch.Tensor] = None
+    use_fp8_w8a8: bool = False
+    use_int8_w8a8: bool = False
+    use_int8_w8a16: bool = False
+    use_int4_w4a16: bool = False
+    per_channel_quant: bool = False
+    w13_scale: Optional[torch.Tensor] = None
+    w2_scale: Optional[torch.Tensor] = None
+    w13_zp: Optional[torch.Tensor] = None
+    w2_zp: Optional[torch.Tensor] = None
+    a13_scale: Optional[torch.Tensor] = None
+    a2_scale: Optional[torch.Tensor] = None
+    block_shape: Optional[List[int]] = None
+
 
 @dataclass
 class DeepGemmMoeQuantInfo(MoeQuantInfo):
@@ -114,6 +133,7 @@ class DeepGemmRunnerCore(MoeRunnerCore):
         super().__init__(config)
         assert self.config.activation == "silu"
         assert self.config.is_gated
+        self.use_fused_quant = get_bool_env_var("FUSED_RMSNORM_QUANT")
 
     def run(
         self,
@@ -126,7 +146,7 @@ class DeepGemmRunnerCore(MoeRunnerCore):
                 runner_input, quant_info, running_state
             )
         else:
-            hidden_states = self._run_masked_gemm(
+            hidden_states = self._run_masked_gemm_mx(
                 runner_input, quant_info, running_state
             )
         return DeepGemmRunnerOutput(hidden_states=hidden_states)
@@ -351,6 +371,65 @@ class DeepGemmRunnerCore(MoeRunnerCore):
             block_m, threshold = deep_gemm_return_value
             meta_overlap_args["block_m"] = block_m
             meta_overlap_args["threshold"] = threshold
+
+        return down_output
+
+    def _run_masked_gemm_mx(
+        self, 
+        runner_input: DeepGemmRunnerInput,
+        quant_info: DeepGemmMoeQuantInfo,
+        running_state: dict,
+    ) -> torch.Tensor:
+        from sglang.srt.layers.moe.ep_moe.kernels import (
+            silu_and_mul_masked_fwd,
+        )
+        from sglang.srt.layers.quantization.int8_kernel import (
+            per_token_quant_int8,
+        )
+        
+        hidden_states = runner_input.hidden_states
+        # hidden_states_scale = runner_input.hidden_states_scale
+        masked_m = runner_input.masked_m
+        expected_m = runner_input.expected_m
+
+        w13_weight = quant_info.w13_weight
+        w2_weight = quant_info.w2_weight
+        w13_scale = quant_info.w13_scale
+        w2_scale = quant_info.w2_scale
+
+        hidden_states_device = running_state["hidden_states_device"]
+
+        num_groups, m, k = hidden_states.shape
+        n = w13_weight.size(1)
+        gateup_output = torch.empty(
+            (num_groups, m, n), device=hidden_states_device, dtype=torch.bfloat16
+        )
+        deep_gemm_wrapper.grouped_gemm_nt_int8int8bf16_masked(
+            hidden_states if self.use_fused_quant 
+            else per_token_quant_int8(hidden_states),
+            (w13_weight, w13_scale),
+            gateup_output,
+            masked_m,
+            expected_m,
+        )
+        dispose_tensor(hidden_states)
+        
+        # Act
+        down_input = silu_and_mul_masked_fwd(gateup_output, masked_m)
+        del gateup_output
+
+        # GroupGemm-2
+        n = w2_weight.size(1)
+        down_output = torch.empty(
+            (num_groups, m, n), device=hidden_states_device, dtype=torch.bfloat16
+        )
+        deep_gemm_wrapper.grouped_gemm_nt_int8int8bf16_masked(
+            down_input,
+            (w2_weight, w2_scale),
+            down_output,
+            masked_m,
+            expected_m,
+        )
 
         return down_output
 
