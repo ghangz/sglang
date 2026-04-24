@@ -152,6 +152,7 @@ from sglang.srt.utils import (
     log_info_on_rank0,
     make_layers,
     use_intel_amx_backend,
+    align_packed_tensor_size,
 )
 from sglang.srt.utils.custom_op import register_custom_op
 
@@ -231,7 +232,10 @@ class DeepseekV2MLP(nn.Module):
                 f"Unsupported activation: {hidden_act}. "
                 "Only silu is supported for now."
             )
-        self.act_fn = SiluAndMul()
+        fused_quant = False
+        if quant_config is not None and quant_config.get_name() == "compressed_tensors":
+            fused_quant = True
+        self.act_fn = SiluAndMul(fused_quant=fused_quant)
 
     def forward(
         self,
@@ -241,8 +245,10 @@ class DeepseekV2MLP(nn.Module):
         use_reduce_scatter: bool = False,
         gemm_output_zero_allocator: BumpAllocator = None,
     ):
-        if (self.tp_size == 1) and x.shape[0] == 0:
-            return x
+        if self.tp_size == 1:
+            target = x[0] if isinstance(x, tuple) else x
+            if target.shape[0] == 0:
+                return x
 
         if (
             gemm_output_zero_allocator is not None
@@ -374,6 +380,7 @@ class DeepseekV2MoE(nn.Module):
         self.layer_id = layer_id
         self.alt_stream = alt_stream
         self.is_nextn = is_nextn
+        self.use_fused_quant = get_bool_env_var("FUSED_RMSNORM_QUANT")
 
         if self.tp_size > config.n_routed_experts:
             raise ValueError(
@@ -552,10 +559,12 @@ class DeepseekV2MoE(nn.Module):
         gemm_output_zero_allocator: BumpAllocator = None,
     ) -> torch.Tensor:
         if not self._enable_a2a_moe:
+            bs = hidden_states[0].shape[0] if isinstance(hidden_states, tuple) \
+                else hidden_states.shape[0]
             if (
                 self.alt_stream is not None
                 and self.num_fused_shared_experts == 0
-                and hidden_states.shape[0] > 0
+                and bs  > 0
                 and get_is_capture_mode()
             ):
                 return self.forward_normal_dual_stream(
@@ -773,6 +782,20 @@ class DeepseekV2MoE(nn.Module):
             sbo_enabled_flag and SboFlags.enable_combine_shared_two_stream_overlap()
         )
 
+        tensor_scale_tuple = None
+        if isinstance(hidden_states, tuple):
+            packed_hidden = hidden_states[0]
+            tensor_scale_tuple = hidden_states[2]
+            hidden_states = hidden_states[1]
+        else:
+            packed_hidden = hidden_states
+            if self.use_fused_quant and packed_hidden.shape[0] == 0:
+                packed_hidden = torch.empty(
+                    (0, align_packed_tensor_size(packed_hidden.shape[-1])), 
+                    dtype=hidden_states.dtype, 
+                    device=hidden_states.device
+                )
+
         if hidden_states.shape[0] > 0:
             # router_logits: (num_tokens, n_experts)
             router_logits = self.gate(hidden_states, forward_batch=forward_batch)
@@ -780,11 +803,11 @@ class DeepseekV2MoE(nn.Module):
                 if self.alt_stream is not None:
                     self.alt_stream.wait_stream(torch.cuda.current_stream())
                     with torch.cuda.stream(self.alt_stream):
-                        shared_output = self._forward_shared_experts(hidden_states)
+                        shared_output = self._forward_shared_experts(tensor_scale_tuple if (self.use_fused_quant and tensor_scale_tuple) is not None else hidden_states)
                         shared_output.record_stream(self.alt_stream)
                         shared_event = self.alt_stream.record_event()
                 else:
-                    shared_output = self._forward_shared_experts(hidden_states)
+                    shared_output = self._forward_shared_experts(tensor_scale_tuple if (self.use_fused_quant and tensor_scale_tuple) is not None else hidden_states)
             topk_output = self.topk(
                 hidden_states,
                 router_logits,
@@ -945,7 +968,7 @@ class DeepseekV2MoE(nn.Module):
             )
 
         final_hidden_states = self.experts(
-            hidden_states=hidden_states,
+            hidden_states=packed_hidden,
             topk_output=topk_output,
         )
 
@@ -976,7 +999,7 @@ class DeepseekV2MoE(nn.Module):
     def _forward_shared_experts(
         self, hidden_states, gemm_output_zero_allocator: BumpAllocator = None
     ):
-        if (hidden_states.shape[0] > 0) and (self.num_fused_shared_experts == 0):
+        if isinstance(hidden_states,tuple) or ((hidden_states.shape[0] > 0) and (self.num_fused_shared_experts == 0)):
             return self.shared_experts(
                 hidden_states, gemm_output_zero_allocator=gemm_output_zero_allocator
             )
@@ -1639,10 +1662,15 @@ class DeepseekV2DecoderLayer(nn.Module):
                 tp_size=mlp_tp_size,
             )
 
+        # self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        # self.post_attention_layernorm = RMSNorm(
+        #     config.hidden_size, eps=config.rms_norm_eps
+        # )
+        packed_quant = True if self.is_layer_sparse else False
+        fused_quant = get_bool_env_var("FUSED_RMSNORM_QUANT", default="false")
         self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(
-            config.hidden_size, eps=config.rms_norm_eps
-        )
+            config.hidden_size, eps=config.rms_norm_eps, fused_quant=fused_quant, packed_quant=packed_quant, packed_size=align_packed_tensor_size(config.hidden_size))
 
         if self.nsa_enable_prefill_cp:
             self.layer_communicator = NSACPLayerCommunicator(
