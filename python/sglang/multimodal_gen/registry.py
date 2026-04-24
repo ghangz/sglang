@@ -117,6 +117,11 @@ from sglang.multimodal_gen.configs.sample.zimage import (
     ZImageSamplingParams,
     ZImageTurboSamplingParams,
 )
+
+from sglang.multimodal_gen.configs.pipeline_configs.joy_image import (
+    JoyImageEditPipelineConfig,
+)
+
 from sglang.multimodal_gen.runtime.pipelines_core.composed_pipeline_base import (
     ComposedPipelineBase,
 )
@@ -124,8 +129,12 @@ from sglang.multimodal_gen.runtime.utils.hf_diffusers_utils import (
     maybe_download_model_index,
 )
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
+
 from sglang.utils import KNOWN_NON_DIFFUSERS_DIFFUSION_MODEL_PATTERNS
 
+from sglang.multimodal_gen.configs.sample.joy_image import (
+    JoyImageEditSamplingParams,
+)
 logger = init_logger(__name__)
 
 # --- Part 1: Pipeline Discovery ---
@@ -889,6 +898,18 @@ def _register_configs():
         hf_model_paths=[
             "FireRedTeam/FireRed-Image-Edit-1.0",
             "FireRedTeam/FireRed-Image-Edit-1.1",
+        ],
+    )
+
+    # JoyAI
+    register_configs(
+        sampling_param_cls=JoyImageEditSamplingParams,
+        pipeline_config_cls=JoyImageEditPipelineConfig,
+        hf_model_paths=[
+            "jdopensource/JoyAI-Image-Edit-Diffusers",
+        ],
+        model_detectors=[
+            lambda hf_id: "joyai-image-edit" in hf_id.lower(),
         ],
     )
 

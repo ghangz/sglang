@@ -56,6 +56,10 @@ def qwen_image_postprocess_text(outputs, _text_inputs, drop_idx=34):
     return prompt_embeds
 
 
+def qwen_image_edit_postprocess_text(outputs, _text_inputs):
+    return qwen_image_postprocess_text(outputs, _text_inputs, drop_idx=64)
+
+
 def _normalize_prompt_list(prompt):
     return [prompt] if isinstance(prompt, str) else prompt
 
@@ -318,6 +322,9 @@ class QwenImageEditPipelineConfig(QwenImagePipelineConfig):
     """Configuration for the QwenImageEdit pipeline."""
 
     task_type: ModelTaskType = ModelTaskType.I2I
+    postprocess_text_funcs: tuple[Callable[[str], str], ...] = field(
+        default_factory=lambda: (qwen_image_edit_postprocess_text,)
+    )
 
     def _prepare_edit_cond_kwargs(
         self, batch, prompt_embeds, rotary_emb, device, dtype
