@@ -234,7 +234,7 @@ class DeepseekV2MLP(nn.Module):
                 "Only silu is supported for now."
             )
         fused_quant = False
-        if quant_config is not None and quant_config.get_name() == "compressed_tensors":
+        if quant_config is not None and quant_config.get_name() == "compressed_tensors" and get_bool_env_var("FUSED_RMSNORM_QUANT", default="false"):
             fused_quant = True
         self.act_fn = SiluAndMul(fused_quant=fused_quant)
 
@@ -804,7 +804,7 @@ class DeepseekV2MoE(nn.Module):
                 if self.alt_stream is not None:
                     self.alt_stream.wait_stream(torch.cuda.current_stream())
                     with torch.cuda.stream(self.alt_stream):
-                        shared_output = self._forward_shared_experts(tensor_scale_tuple if (self.use_fused_quant and tensor_scale_tuple) is not None else hidden_states)
+                        shared_output = self._forward_shared_experts(hidden_states)
                         shared_output.record_stream(self.alt_stream)
                         shared_event = self.alt_stream.record_event()
                 else:
@@ -1000,7 +1000,9 @@ class DeepseekV2MoE(nn.Module):
     def _forward_shared_experts(
         self, hidden_states, gemm_output_zero_allocator: BumpAllocator = None
     ):
-        if isinstance(hidden_states,tuple) or ((hidden_states.shape[0] > 0) and (self.num_fused_shared_experts == 0)):
+        bs = hidden_states[0].shape[0] if isinstance(hidden_states, tuple) \
+            else hidden_states.shape[0]
+        if (bs > 0) and (self.num_fused_shared_experts == 0):
             return self.shared_experts(
                 hidden_states, gemm_output_zero_allocator=gemm_output_zero_allocator
             )

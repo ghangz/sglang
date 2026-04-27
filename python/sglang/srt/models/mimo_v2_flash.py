@@ -123,7 +123,7 @@ class MiMoV2MLP(nn.Module):
                 "Only silu is supported for now."
             )
         fused_quant = False
-        if quant_config is not None and quant_config.get_name() == "compressed_tensors":
+        if quant_config is not None and quant_config.get_name() == "compressed_tensors" and get_bool_env_var("FUSED_RMSNORM_QUANT", default="false"):
             fused_quant = True
         self.act_fn = SiluAndMul(fused_quant=fused_quant)
 
