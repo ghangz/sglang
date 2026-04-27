@@ -172,7 +172,7 @@ async def async_request_image_sglang(
                     resp_json = await response.json()
                     output.response_body = resp_json
                     output.success = True
-                    if "peak_memory_mb" in resp_json:
+                    if resp_json.get("peak_memory_mb") is not None:
                         output.peak_memory_mb = resp_json["peak_memory_mb"]
                 else:
                     output.error = f"HTTP {response.status}: {await response.text()}"
@@ -201,7 +201,7 @@ async def async_request_image_sglang(
                     resp_json = await response.json()
                     output.response_body = resp_json
                     output.success = True
-                    if "peak_memory_mb" in resp_json:
+                    if resp_json.get("peak_memory_mb") is not None:
                         output.peak_memory_mb = resp_json["peak_memory_mb"]
                 else:
                     output.error = f"HTTP {response.status}: {await response.text()}"
@@ -346,7 +346,7 @@ async def async_request_video_sglang(
                     if status == "completed":
                         output.success = True
                         output.response_body = status_data
-                        if "peak_memory_mb" in status_data:
+                        if resp_json.get("peak_memory_mb") is not None:
                             output.peak_memory_mb = status_data["peak_memory_mb"]
                         break
                     elif status == "failed":
@@ -390,7 +390,11 @@ def calculate_metrics(
 
     num_success = len(success_outputs)
     latencies = [o.latency for o in success_outputs]
-    peak_memories = [o.peak_memory_mb for o in success_outputs if o.peak_memory_mb > 0]
+    peak_memories = [
+        o.peak_memory_mb
+        for o in success_outputs
+        if o.peak_memory_mb is not None and o.peak_memory_mb > 0
+    ]
 
     metrics = {
         "duration": total_duration,
