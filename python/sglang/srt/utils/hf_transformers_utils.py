@@ -22,6 +22,8 @@ import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union
+import filelock
+import hashlib
 
 import torch
 from huggingface_hub import snapshot_download
@@ -475,6 +477,18 @@ def _ensure_gguf_version():
         pass
 
 
+def get_hf_lock(model_name_or_path: str):
+    lock_dir = tempfile.gettempdir()
+    os.makedirs(os.path.dirname(lock_dir), exist_ok=True)
+    model_name = model_name_or_path.replace("/", "-")
+    hash_name = hashlib.sha256(model_name.encode()).hexdigest()
+    # add hash to avoid conflict with old users' lock files
+    lock_file_name = hash_name + model_name + ".lock"
+    # mode 0o666 is required for the filelock to be shared across users
+    lock = filelock.FileLock(os.path.join(lock_dir, lock_file_name), mode=0o666)
+    return lock
+
+
 @lru_cache_frozenset(maxsize=32)
 def get_config(
     model: str,
@@ -500,52 +514,53 @@ def get_config(
         client.pull_files(ignore_pattern=["*.pt", "*.safetensors", "*.bin"])
         model = client.get_local_dir()
 
-    if (
-        "mistral-large-3" in str(model).lower()
-        or "mistral-small-4" in str(model).lower()
-        or "leanstral" in str(model).lower()
-    ):
-        config = _load_mistral_large_3_for_causal_LM(
-            model, trust_remote_code=trust_remote_code, revision=revision
-        )
-    else:
-        _ensure_llama_flash_attention2_compat()
-        try:
-            config = AutoConfig.from_pretrained(
-                model, trust_remote_code=trust_remote_code, revision=revision, **kwargs
+    with get_hf_lock(model):
+        if (
+            "mistral-large-3" in str(model).lower()
+            or "mistral-small-4" in str(model).lower()
+            or "leanstral" in str(model).lower()
+        ):
+            config = _load_mistral_large_3_for_causal_LM(
+                model, trust_remote_code=trust_remote_code, revision=revision
             )
-        except ValueError as e:
-            if not "deepseek_v32" in str(e):
-                raise e
-            config = _load_deepseek_v32_model(
-                model, trust_remote_code=trust_remote_code, revision=revision, **kwargs
-            )
-        except KeyError as e:
-            # Transformers v5 may register a built-in config class that
-            # conflicts with sglang's custom one (e.g. NemotronHConfig
-            # doesn't handle '-' in hybrid_override_pattern). Fall back
-            # to loading the raw config dict and using sglang's class.
-            # Also handle deepseek_v32 which v5 doesn't recognize.
-            if "deepseek_v32" in str(e):
+        else:
+            _ensure_llama_flash_attention2_compat()
+            try:
+                config = AutoConfig.from_pretrained(
+                    model, trust_remote_code=trust_remote_code, revision=revision, **kwargs
+                )
+            except ValueError as e:
+                if not "deepseek_v32" in str(e):
+                    raise e
                 config = _load_deepseek_v32_model(
-                    model,
-                    trust_remote_code=trust_remote_code,
-                    revision=revision,
-                    **kwargs,
+                    model, trust_remote_code=trust_remote_code, revision=revision, **kwargs
                 )
-            else:
-                config_dict, _ = PretrainedConfig.get_config_dict(
-                    model,
-                    trust_remote_code=trust_remote_code,
-                    revision=revision,
-                    **kwargs,
-                )
-                model_type = config_dict.get("model_type")
-                if model_type in _CONFIG_REGISTRY:
-                    config = _CONFIG_REGISTRY[model_type].from_dict(config_dict)
-                    config._name_or_path = model
+            except KeyError as e:
+                # Transformers v5 may register a built-in config class that
+                # conflicts with sglang's custom one (e.g. NemotronHConfig
+                # doesn't handle '-' in hybrid_override_pattern). Fall back
+                # to loading the raw config dict and using sglang's class.
+                # Also handle deepseek_v32 which v5 doesn't recognize.
+                if "deepseek_v32" in str(e):
+                    config = _load_deepseek_v32_model(
+                        model,
+                        trust_remote_code=trust_remote_code,
+                        revision=revision,
+                        **kwargs,
+                    )
                 else:
-                    raise
+                    config_dict, _ = PretrainedConfig.get_config_dict(
+                        model,
+                        trust_remote_code=trust_remote_code,
+                        revision=revision,
+                        **kwargs,
+                    )
+                    model_type = config_dict.get("model_type")
+                    if model_type in _CONFIG_REGISTRY:
+                        config = _CONFIG_REGISTRY[model_type].from_dict(config_dict)
+                        config._name_or_path = model
+                    else:
+                        raise
 
     if (
         config.architectures is not None
