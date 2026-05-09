@@ -275,8 +275,6 @@ class Envs:
     # Set to "env://" to use an externally-created TCPStore via MASTER_ADDR/MASTER_PORT.
     SGLANG_DISTRIBUTED_INIT_METHOD_OVERRIDE = EnvStr(None)
     SGLANG_TCP_STORE_PORT = EnvInt(29600)
-    SGLANG_DCP = EnvInt(1)
-    SGLANG_DCP_SYMM_ONLY = EnvBool(False)
 
     # Tool Calling
     SGLANG_FORWARD_UNKNOWN_TOOLS = EnvBool(False)

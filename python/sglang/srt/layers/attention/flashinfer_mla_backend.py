@@ -31,9 +31,6 @@ from sglang.srt.utils import (
     next_power_of_2,
 )
 
-from sglang.srt.distributed import get_dcp_rank, get_dcp_world_size
-from sglang.srt.layers.attention.utils import update_kv_lens_and_indices
-
 if TYPE_CHECKING:
     from sglang.srt.layers.attention.flashinfer_mla_backend import (
         FlashInferMlaAttnBackend,
@@ -337,7 +334,6 @@ class FlashInferMLAAttnBackend(AttentionBackend):
                 prefix_lens,
                 prefill_wrapper_paged=self.prefill_wrapper_paged,
                 use_ragged=use_ragged,
-                forward_batch=forward_batch,
             )
             self.forward_metadata = PrefillMetadata(
                 self.prefill_wrapper_paged, use_ragged
@@ -468,13 +464,6 @@ class FlashInferMLAAttnBackend(AttentionBackend):
         if forward_mode.is_decode_or_idle():
             assert seq_lens_cpu is not None
             kv_len_arr_cpu = seq_lens_cpu[:bs]
-
-            if get_dcp_world_size() > 1:
-                dcp_world_size = get_dcp_world_size()
-                dcp_rank = get_dcp_rank()
-                # Compute local lengths following the same formula as filter_seq_indices.
-                kv_len_arr_cpu = ((kv_len_arr_cpu - dcp_rank - 1) // dcp_world_size) + 1
-
             self.cuda_graph_kv_indptr_cpu[1 : bs + 1] = torch.cumsum(
                 kv_len_arr_cpu, dim=0
             )
@@ -583,13 +572,9 @@ class FlashInferMLAAttnBackend(AttentionBackend):
             )
         else:
             # mla paged prefill
-            if forward_batch.dcp_kv_buffer is not None:
-                k_buf = forward_batch.dcp_kv_buffer.to(q.dtype)
-            else:
-                k_buf = forward_batch.token_to_kv_pool.get_key_buffer(
-                    layer.layer_id
-                ).to(q.dtype)
-
+            k_buf = forward_batch.token_to_kv_pool.get_key_buffer(layer.layer_id).to(
+                q.dtype
+            )
             if q_rope is None:
                 qall = q.view(-1, layer.tp_q_head_num, layer.head_dim)
                 q, q_rope = (
@@ -656,28 +641,23 @@ class FlashInferMLAAttnBackend(AttentionBackend):
         )
 
         o = q_nope.new_empty(q_nope.shape)
-        # TODO(augusto.yjh) for decode and dcp_world_size > 1, lse should be returned to compute final attn_out
         # Direct call to run without the wrapper
-        out = decode_wrapper.run(
+        o = decode_wrapper.run(
             q_nope,
             q_rope,
             k_buffer[:, :, : layer.v_head_dim],
             k_buffer[:, :, layer.v_head_dim :],
             out=o,
-            return_lse=forward_batch.forward_mode.is_decode()
-            and get_dcp_world_size() > 1,
         )
 
-        return out
+        return o.view(-1, layer.tp_q_head_num * layer.v_head_dim)
 
 
 class FlashInferMLAIndicesUpdaterDecode:
     def __init__(self, model_runner: ModelRunner, attn_backend: AttentionBackend):
         # Parse Constants
         self.num_local_heads = (
-            model_runner.model_config.num_attention_heads
-            // get_attention_tp_size()
-            * get_dcp_world_size()
+            model_runner.model_config.num_attention_heads // get_attention_tp_size()
         )
         self.kv_lora_rank = model_runner.model_config.kv_lora_rank
         self.qk_nope_head_dim = model_runner.model_config.qk_nope_head_dim
@@ -747,58 +727,6 @@ class FlashInferMLAIndicesUpdaterDecode:
                 kv_indices,
                 self.req_to_token.shape[1],
             )
-
-            if get_dcp_world_size() > 1:
-                local_kv_lens = (
-                    (kv_lens - get_dcp_rank() - 1) // get_dcp_world_size() + 1
-                ).clamp_(min=0)
-
-                if not init_metadata_replay:
-                    max_local_len = (
-                        int(local_kv_lens.max().item())
-                        if local_kv_lens.numel() > 0
-                        else 0
-                    )
-                    total_local_len = (
-                        int(local_kv_lens.sum().item())
-                        if local_kv_lens.numel() > 0
-                        else 0
-                    )
-                else:
-                    max_local_len = (
-                        int(fast_decode_kwargs["kv_len_arr_cpu"].max().item())
-                        if fast_decode_kwargs["kv_len_arr_cpu"].numel() > 0
-                        else 0
-                    )
-                    total_local_len = (
-                        int(fast_decode_kwargs["kv_len_arr_cpu"].sum().item())
-                        if fast_decode_kwargs["kv_len_arr_cpu"].numel() > 0
-                        else 0
-                    )
-                local_kv_lens_cumsum = kv_indptr.new_zeros((bs + 1,))
-                local_kv_lens_cumsum[1 : bs + 1] = torch.cumsum(local_kv_lens, dim=0)
-                local_kv_indices = kv_indices.new_empty(total_local_len)
-                BLOCK_SIZE = 128
-                num_blocks = (
-                    (max_local_len + BLOCK_SIZE - 1) // BLOCK_SIZE
-                    if max_local_len > 0
-                    else 1
-                )
-                grid = (bs, num_blocks)
-                update_kv_lens_and_indices[grid](
-                    kv_lens,
-                    kv_indptr,
-                    kv_indices,
-                    local_kv_lens,
-                    local_kv_lens_cumsum,
-                    local_kv_indices,
-                    dcp_rank=get_dcp_rank(),
-                    dcp_world_size=get_dcp_world_size(),
-                    BLOCK_SIZE=BLOCK_SIZE,
-                )
-                kv_indices[:total_local_len] = local_kv_indices[:total_local_len]
-                kv_lens = local_kv_lens
-                kv_indptr[: bs + 1] = local_kv_lens_cumsum[: bs + 1]
         else:
             kv_indptr, kv_indices = spec_info.kv_indptr, spec_info.kv_indices
 
@@ -864,7 +792,6 @@ class FlashInferMLAIndicesUpdaterPrefill:
         prefill_wrapper_paged: BatchMLAPagedAttentionWrapper,
         use_ragged: bool,
         spec_info: Optional[SpecInput] = None,
-        forward_batch: Optional[ForwardBatch] = None,
     ):
         if use_ragged:
             paged_kernel_lens = prefix_lens
@@ -885,7 +812,6 @@ class FlashInferMLAIndicesUpdaterPrefill:
             self.qo_indptr,
             use_ragged,
             spec_info,
-            forward_batch=forward_batch,
         )
 
     def call_begin_forward(
@@ -901,7 +827,6 @@ class FlashInferMLAIndicesUpdaterPrefill:
         qo_indptr: torch.Tensor,
         use_ragged: bool,
         spec_info: Optional[SpecInput] = None,
-        forward_batch: Optional[ForwardBatch] = None,
     ):
         bs = len(seq_lens)
         sm_scale = self.scaling
@@ -953,11 +878,6 @@ class FlashInferMLAIndicesUpdaterPrefill:
             )
         else:
             # mla paged prefill
-            if forward_batch is not None:
-                if forward_batch.dcp_kv_indptr is not None:
-                    kv_indptr = forward_batch.dcp_kv_indptr
-                if forward_batch.dcp_kv_indices is not None:
-                    kv_indices = forward_batch.dcp_kv_indices
             kv_len_arr = kv_indptr[1:] - kv_indptr[:-1]
             wrapper_paged.plan(
                 qo_indptr,
