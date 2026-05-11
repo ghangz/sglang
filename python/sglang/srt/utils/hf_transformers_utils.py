@@ -78,6 +78,7 @@ from sglang.srt.configs import (
     GraniteMoeHybridConfig,
     JetNemotronConfig,
     JetVLMConfig,
+    KimiK2Config,
     KimiK25Config,
     KimiLinearConfig,
     KimiVLConfig,
@@ -125,6 +126,7 @@ _CONFIG_REGISTRY: List[Type[PretrainedConfig]] = [
     Qwen3_5MoeConfig,
     JetNemotronConfig,
     JetVLMConfig,
+    KimiK2Config,
     KimiK25Config,
     Step3p5Config,
 ]

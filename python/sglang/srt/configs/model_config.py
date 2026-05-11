@@ -394,6 +394,7 @@ class ModelConfig:
                 if (
                     envs.SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN.get()
                     or is_in_ci()  # FIXME: fix this special case
+                    or is_draft_model  # spec decoding intentionally syncs draft to target
                 ):
                     logger.warning(msg)
                     self.context_len = context_length
@@ -452,6 +453,7 @@ class ModelConfig:
             or "PixtralForConditionalGeneration" in self.hf_config.architectures
             or "MistralLarge3ForCausalLMEagle" in self.hf_config.architectures
             or "KimiK25ForConditionalGeneration" in self.hf_config.architectures
+            or "Eagle3DeepseekV2ForCausalLM" in self.hf_config.architectures
         ):
             self.head_dim = 256
             self.attention_arch = AttentionArch.MLA
