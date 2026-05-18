@@ -1000,6 +1000,8 @@ class BatchTokenIDOutput(BaseBatchReq, SpeculativeDecodingMetricsMixin):
     # routed_experts[i] is a tensor of shape (token, layer, top_k) for request i
     routed_experts: List[Optional[torch.Tensor]]
 
+    indexer_topk: List[Optional[torch.Tensor]]
+
     # The information of placeholder tokens (e.g., image token)
     # idx is the index of the token in the prompt after expansion.
     # val is the length of padded tokens after expansion.
