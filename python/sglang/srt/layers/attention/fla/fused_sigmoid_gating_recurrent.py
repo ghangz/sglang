@@ -221,10 +221,6 @@ def fused_sigmoid_gating_delta_rule_update_kernel(
         p_v += stride_v
         p_b += stride_b
         p_o += HV * V
-        if IS_KDA:
-            p_a += HV * K
-        else:
-            p_a += HV
         p_a += stride_a
 
     # Store final state back to h0_source with bounds checking
