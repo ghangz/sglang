@@ -1,3 +1,4 @@
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 """Unit tests for srt/parser/reasoning_parser.py"""
 
 import unittest

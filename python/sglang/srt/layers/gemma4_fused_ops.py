@@ -1,3 +1,4 @@
+# Copyright (c) 2026 MetaX Integrated Circuits (Shanghai) Co., Ltd. All rights reserved.
 """Fused triton kernels for Gemma4 decoder layer operations.
 
 Fuses standard RMSNorm + residual-add (+ optional scalar multiply) into

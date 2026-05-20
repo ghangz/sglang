@@ -1,3 +1,4 @@
+# Copyright (c) 2026 MetaX Integrated Circuits (Shanghai) Co., Ltd. All rights reserved.
 """
 Usage:
 python3 bench_hf.py --model-path meta-llama/Llama-2-7b-hf --data-dir data --ntrain 5

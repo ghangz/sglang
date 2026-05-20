@@ -1,3 +1,4 @@
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 import torch
 from sgl_kernel.debug_utils import maybe_wrap_debug_kernel
 from sgl_kernel.load_utils import _preload_cuda_library

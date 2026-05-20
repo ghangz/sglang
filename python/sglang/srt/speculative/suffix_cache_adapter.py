@@ -1,3 +1,4 @@
+# Copyright (c) 2026 MetaX Integrated Circuits (Shanghai) Co., Ltd. All rights reserved.
 """
 Cache adapter that wraps the suffix decoding backend cache to provide
 the same interface as NgramCache.

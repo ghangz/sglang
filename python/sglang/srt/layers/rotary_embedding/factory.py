@@ -1,3 +1,4 @@
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 """Factory functions: get_rope, get_rope_cpu, get_rope_wrapper."""
 
 from __future__ import annotations

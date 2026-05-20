@@ -1,3 +1,4 @@
+# 2026 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 """RoPE scaling variants: Phi3LongRoPE, FourierRoPE, DeepseekScaling, Llama3,
 Llama4Vision, DynamicNTK, DynamicNTKAlpha, DualChunkRotaryEmbedding."""
 
