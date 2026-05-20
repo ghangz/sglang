@@ -2119,6 +2119,7 @@ def _setup_and_run_http_server(
                 timeout_keep_alive=envs.SGLANG_TIMEOUT_KEEP_ALIVE.get(),
                 loop="uvloop",
                 workers=server_args.tokenizer_worker_num,
+                timeout_worker_healthcheck=60,
                 ssl_keyfile=server_args.ssl_keyfile,
                 ssl_certfile=server_args.ssl_certfile,
                 ssl_ca_certs=server_args.ssl_ca_certs,
