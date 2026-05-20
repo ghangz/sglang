@@ -62,6 +62,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+from sglang.srt.utils.common import get_bool_env_var
+_TTFT_PREFILL_RETURN_FIRST_TOKEN = get_bool_env_var("SGLANG_TTFT_PREFILL_RETURN_FIRST_TOKEN")
 
 def release_req_to_metadata_buffer(
     req: Req, allocator: ReqToMetadataIdxAllocator
@@ -568,6 +570,21 @@ class SchedulerDisaggregationPrefillMixin:
                     self.send_kv_chunk(req, last_chunk=False, end_idx=req.tmp_end_idx)
                 req.time_stats.set_last_chunked_prefill_finish_time()
 
+        if _TTFT_PREFILL_RETURN_FIRST_TOKEN:
+            # Stream requests, no need to wait transfer finish
+            output_reqs = []
+            for req in self.disagg_prefill_inflight_queue:
+                if not req.disagg_prefill_inflight_stream_output:
+                    req.disagg_prefill_inflight_stream_output = True
+                    req.finished_reason = FINISH_LENGTH(length=0)
+                    output_reqs.append(req)
+            if len(output_reqs) > 0:
+                self.stream_output(
+                    output_reqs,
+                    any(req.return_logprob for req in output_reqs),
+                    None,
+                )
+
         can_run_cuda_graph = getattr(result, "can_run_cuda_graph", False)
         self.report_prefill_stats(
             prefill_stats=batch.prefill_stats,
@@ -673,12 +690,18 @@ class SchedulerDisaggregationPrefillMixin:
                 if "speed_gb_s" in metrics:
                     self.kv_transfer_speed_gb_s = metrics["speed_gb_s"]
 
-        # Stream requests which have finished transfer
-        self.stream_output(
-            done_reqs,
-            any(req.return_logprob for req in done_reqs),
-            None,
-        )
+        # check missing
+        if _TTFT_PREFILL_RETURN_FIRST_TOKEN:
+            for req in done_reqs:
+                assert req.disagg_prefill_inflight_stream_output
+
+        if not _TTFT_PREFILL_RETURN_FIRST_TOKEN:
+            # Stream requests which have finished transfer
+            self.stream_output(
+                    done_reqs,
+                    any(req.return_logprob for req in done_reqs),
+                    None,
+                )
         for req in done_reqs:
             req: Req
 

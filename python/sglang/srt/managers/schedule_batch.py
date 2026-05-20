@@ -875,6 +875,9 @@ class Req(ReqDllmMixin):
         # For hisparse
         self.hisparse_staging = False
 
+        # For stream_output overlap with kv-trans during pd-disagg
+        self.disagg_prefill_inflight_stream_output = False
+        
     @property
     def seqlen(self) -> int:
         """Get the current sequence length of the request."""
