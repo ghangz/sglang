@@ -605,7 +605,11 @@ class SchedulerPPMixin:
                     global_num_tokens[dp_rank] = current_seq_len
                     batch.global_num_tokens = global_num_tokens
                     batch.global_num_tokens_for_logprob = global_num_tokens
-
+                else:
+                    global_num_tokens = [current_seq_len]
+                    batch.global_num_tokens = global_num_tokens
+                    batch.global_num_tokens_for_logprob = global_num_tokens
+                    
                 proxy_tensors = {
                     "hidden_states": torch.zeros(
                         (current_seq_len, model_config.hidden_size),
@@ -675,6 +679,7 @@ class SchedulerPPMixin:
                     self.attn_cp_cpu_group,
                     src=self.attn_cp_group.ranks[0],
                 )
+                seq_lens, latencies = data_to_sync_tp
 
         # Broadcast data to all ranks
         if torch.distributed.is_available() and torch.distributed.is_initialized():
