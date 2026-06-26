@@ -69,7 +69,8 @@ class TestMACAEnv(unittest.TestCase):
                 self.assertEqual(env._get_cucc_info(), {"CUCC": "cucc version 3.0"})
                 mock_check_output.assert_called_once_with(
                     [os.path.join("/opt/cucc", "bin", "cucc"), "--version"],
-                    stderr=-2,
+                    stderr=self.check_env.subprocess.STDOUT,
+                    timeout=10,
                 )
 
     def test_cucc_info_is_not_available_without_working_candidates(self):
@@ -84,6 +85,14 @@ class TestMACAEnv(unittest.TestCase):
 
         with patch.object(self.check_env.shutil, "which", return_value=None):
             self.assertEqual(env._get_mx_smi_info(), {"MX-SMI": "Not Available"})
+
+    def test_base_package_list_is_not_mutated_by_subclasses(self):
+        base_env = self.check_env.BaseEnv()
+        npu_env = self.check_env.NPUEnv()
+
+        self.assertEqual(base_env.package_list.count("torch_npu"), 0)
+        self.assertEqual(npu_env.package_list.count("torch_npu"), 1)
+        self.assertEqual(self.check_env.PACKAGE_LIST.count("torch_npu"), 0)
 
 
 if __name__ == "__main__":

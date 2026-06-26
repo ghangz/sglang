@@ -65,7 +65,7 @@ class BaseEnv:
     """Base class for environment check"""
 
     def __init__(self):
-        self.package_list = PACKAGE_LIST
+        self.package_list = list(PACKAGE_LIST)
 
     @abstractmethod
     def get_info(self) -> dict:
@@ -233,15 +233,6 @@ class GPUEnv(BaseEnv):
 class MACAEnv(BaseEnv):
     """Environment checker for MetaX MACA GPU."""
 
-    EXTRA_PACKAGE_LIST = [
-        "vllm",
-        "triton",
-    ]
-
-    def __init__(self):
-        super().__init__()
-        self.package_list.extend(MACAEnv.EXTRA_PACKAGE_LIST)
-
     def get_info(self):
         maca_info = {"MACA available": torch.cuda.is_available()}
 
@@ -289,7 +280,9 @@ class MACAEnv(BaseEnv):
             try:
                 cucc_output = (
                     subprocess.check_output(
-                        [cucc, "--version"], stderr=subprocess.STDOUT
+                        [cucc, "--version"],
+                        stderr=subprocess.STDOUT,
+                        timeout=10,
                     )
                     .decode("utf-8", errors="replace")
                     .strip()
@@ -310,6 +303,7 @@ class MACAEnv(BaseEnv):
                 [mx_smi, "--show-version"],
                 stderr=subprocess.STDOUT,
                 text=True,
+                timeout=10,
             ).strip()
             return {"MX-SMI": output.splitlines()[0] if output else "Available"}
         except (OSError, subprocess.SubprocessError):
@@ -328,6 +322,7 @@ class MACAEnv(BaseEnv):
                     stderr=subprocess.PIPE,
                     text=True,
                     check=True,
+                    timeout=10,
                 )
                 return {"MACA Topology": "\n" + result.stdout}
             except (OSError, subprocess.SubprocessError):
