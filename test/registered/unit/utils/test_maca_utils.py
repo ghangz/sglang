@@ -1,18 +1,23 @@
-import importlib.util
 import types
 import unittest
 import sys
+import types
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-MACA_UTILS_PATH = REPO_ROOT / "python" / "sglang" / "srt" / "utils" / "maca.py"
+sys.path.insert(0, str(REPO_ROOT / "python"))
+sglang_package = types.ModuleType("sglang")
+sglang_package.__path__ = [str(REPO_ROOT / "python" / "sglang")]
+sys.modules.setdefault("sglang", sglang_package)
+sglang_srt_package = types.ModuleType("sglang.srt")
+sglang_srt_package.__path__ = [str(REPO_ROOT / "python" / "sglang" / "srt")]
+sys.modules.setdefault("sglang.srt", sglang_srt_package)
+sglang_utils_package = types.ModuleType("sglang.srt.utils")
+sglang_utils_package.__path__ = [str(REPO_ROOT / "python" / "sglang" / "srt" / "utils")]
+sys.modules.setdefault("sglang.srt.utils", sglang_utils_package)
 
-spec = importlib.util.spec_from_file_location("sglang_srt_utils_maca", MACA_UTILS_PATH)
-maca_utils = importlib.util.module_from_spec(spec)
-sys.modules["sglang_srt_utils_maca"] = maca_utils
-assert spec.loader is not None
-spec.loader.exec_module(maca_utils)
+from sglang.srt.utils import maca as maca_utils
 
 
 class MacaUtilsTest(unittest.TestCase):
