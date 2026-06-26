@@ -21,7 +21,11 @@ class LoadUtilsMacaTest(unittest.TestCase):
     def test_find_cuda_home_uses_maca_cu_bridge(self):
         with TemporaryDirectory() as tmp_dir:
             maca_path = Path(tmp_dir) / "maca"
-            with patch.dict(os.environ, {"MACA_PATH": str(maca_path)}, clear=True):
+            test_env = os.environ.copy()
+            test_env.pop("CUDA_HOME", None)
+            test_env.pop("CUDA_PATH", None)
+            test_env["MACA_PATH"] = str(maca_path)
+            with patch.dict(os.environ, test_env, clear=True):
                 self.assertEqual(
                     Path(load_utils._find_cuda_home()),
                     maca_path / "tools" / "cu-bridge",
@@ -31,7 +35,11 @@ class LoadUtilsMacaTest(unittest.TestCase):
         with TemporaryDirectory() as tmp_dir:
             maca_path = Path(tmp_dir) / "maca"
             cuda_home = maca_path / "tools" / "cu-bridge"
-            with patch.dict(os.environ, {"MACA_PATH": str(maca_path)}, clear=True):
+            test_env = os.environ.copy()
+            test_env.pop("CUDA_HOME", None)
+            test_env.pop("CUDA_PATH", None)
+            test_env["MACA_PATH"] = str(maca_path)
+            with patch.dict(os.environ, test_env, clear=True):
                 dirs = load_utils._candidate_runtime_library_dirs(cuda_home)
 
             self.assertIn(maca_path / "lib", dirs)

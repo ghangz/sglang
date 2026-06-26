@@ -219,6 +219,7 @@ def _find_cuda_home():
 
 def _candidate_runtime_library_dirs(cuda_home: Path):
     maca_home = os.environ.get("MACA_PATH")
+    cuda_home = Path(cuda_home)
     candidate_dirs = [
         cuda_home / "lib",
         cuda_home / "lib64",
