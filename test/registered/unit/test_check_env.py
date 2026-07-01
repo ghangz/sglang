@@ -6,6 +6,16 @@ from pathlib import Path
 
 
 def _load_check_env(monkeypatch):
+    sglang_spec = importlib.util.find_spec("sglang")
+    if sglang_spec and sglang_spec.submodule_search_locations:
+        module_path = (
+            Path(next(iter(sglang_spec.submodule_search_locations))) / "check_env.py"
+        )
+    else:
+        module_path = (
+            Path(__file__).resolve().parents[3] / "python" / "sglang" / "check_env.py"
+        )
+
     utils_module = types.ModuleType("sglang.srt.utils")
     utils_module.is_hip = lambda: False
     utils_module.is_mps = lambda: False
@@ -20,7 +30,6 @@ def _load_check_env(monkeypatch):
     resource_module.getrlimit = lambda _limit: (1024, 1024)
     monkeypatch.setitem(sys.modules, "resource", resource_module)
 
-    module_path = Path(__file__).resolve().parents[3] / "python" / "sglang" / "check_env.py"
     spec = importlib.util.spec_from_file_location("unit_check_env", module_path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -28,17 +37,17 @@ def _load_check_env(monkeypatch):
     return module
 
 
-class _UnitEnv:
-    def get_info(self):
-        return {}
-
-    def get_topology(self):
-        return {}
-
-
 def test_get_package_versions_handles_missing_packages(monkeypatch):
     check_env = _load_check_env(monkeypatch)
-    env = type("UnitEnv", (_UnitEnv, check_env.BaseEnv), {})()
+
+    class UnitEnv(check_env.BaseEnv):
+        def get_info(self):
+            return {}
+
+        def get_topology(self):
+            return {}
+
+    env = UnitEnv()
     env.package_list = ["sglang", "missing-package-for-unit-test"]
 
     def _fake_version(package_name):
