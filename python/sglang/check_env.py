@@ -183,7 +183,7 @@ class GPUEnv(BaseEnv):
                     )
                 ].strip()
             }
-        except subprocess.SubprocessError:
+        except (OSError, subprocess.SubprocessError):
             return {"NVCC": "Not Available"}
 
     def _get_cuda_driver_version(self):
@@ -252,7 +252,7 @@ class HIPEnv(BaseEnv):
                     hipcc_output.rfind("HIP version") : hipcc_output.rfind("AMD clang")
                 ].strip()
             }
-        except subprocess.SubprocessError:
+        except (OSError, subprocess.SubprocessError):
             return {"HIPCC": "Not Available"}
 
     def _get_rocm_driver_version(self):
