@@ -175,11 +175,7 @@ class GPUEnv(BaseEnv):
 
         try:
             nvcc = os.path.join(CUDA_HOME, "bin/nvcc")
-            nvcc_output = (
-                subprocess.check_output(f'"{nvcc}" -V', shell=True)
-                .decode("utf-8")
-                .strip()
-            )
+            nvcc_output = subprocess.check_output([nvcc, "-V"], text=True).strip()
             return {
                 "NVCC": nvcc_output[
                     nvcc_output.rfind("Cuda compilation tools") : nvcc_output.rfind(
@@ -250,11 +246,7 @@ class HIPEnv(BaseEnv):
 
         try:
             hipcc = os.path.join(ROCM_HOME, "bin/hipcc")
-            hipcc_output = (
-                subprocess.check_output(f'"{hipcc}" --version', shell=True)
-                .decode("utf-8")
-                .strip()
-            )
+            hipcc_output = subprocess.check_output([hipcc, "--version"], text=True).strip()
             return {
                 "HIPCC": hipcc_output[
                     hipcc_output.rfind("HIP version") : hipcc_output.rfind("AMD clang")
