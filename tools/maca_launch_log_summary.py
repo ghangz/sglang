@@ -7,35 +7,64 @@ import argparse
 import json
 import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
-METRICS = ['latency', 'throughput', 'tokens', 'port']
-ERROR_RE = re.compile(r"(error|failed|timeout|traceback|exception|segmentation fault|core dumped)", re.I)
-NUMBER_RE = re.compile(r"(?P<key>[A-Za-z_/-]+)\s*[:=]\s*(?P<value>[0-9]+(?:\.[0-9]+)?)")
+METRICS = ["latency", "throughput", "tokens", "port"]
+ERROR_RE = re.compile(
+    r"(error|failed|timeout|traceback|exception|segmentation fault|core dumped)", re.I
+)
+NUMBER_RE = re.compile(
+    r"(?P<key>[A-Za-z_/-]+)\s*[:=]\s*(?P<value>[0-9]+(?:\.[0-9]+)?)"
+)
 
 
 def parse(path: Path) -> dict[str, object]:
     errors: list[dict[str, object]] = []
     values: list[dict[str, object]] = []
-    for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-        if ERROR_RE.search(line):
-            errors.append({"line": lineno, "text": line.strip()})
-        for match in NUMBER_RE.finditer(line):
-            key = match.group("key").lower()
-            if not METRICS or any(token in key for token in METRICS):
-                values.append({"line": lineno, "metric": key, "value": float(match.group("value"))})
-    return {"path": str(path), "metric_count": len(values), "error_count": len(errors), "metrics": values, "errors": errors}
+    try:
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for lineno, line in enumerate(handle, 1):
+                if ERROR_RE.search(line):
+                    errors.append({"line": lineno, "text": line.strip()})
+                for match in NUMBER_RE.finditer(line):
+                    key = match.group("key").lower()
+                    if not METRICS or any(token in key for token in METRICS):
+                        values.append(
+                            {
+                                "line": lineno,
+                                "metric": key,
+                                "value": float(match.group("value")),
+                            }
+                        )
+    except OSError as exc:
+        return {
+            "path": str(path),
+            "metric_count": 0,
+            "error_count": 1,
+            "metrics": [],
+            "errors": [{"line": None, "text": f"cannot read log: {exc}"}],
+        }
+    return {
+        "path": str(path),
+        "metric_count": len(values),
+        "error_count": len(errors),
+        "metrics": values,
+        "errors": errors,
+    }
 
 
 def self_test() -> None:
-    sample = Path("_log_summary_sample.log")
-    sample.write_text("latency_ms=12.5\nERROR timeout\n", encoding="utf-8")
-    try:
+    with TemporaryDirectory() as tmp_dir:
+        sample = Path(tmp_dir) / "log_summary_sample.log"
+        sample.write_text("latency_ms=12.5\nERROR timeout\n", encoding="utf-8")
         data = parse(sample)
-        assert data["metric_count"] == 1
-        assert data["error_count"] == 1
-        print(json.dumps({"ok": True, "metric_count": data["metric_count"]}, ensure_ascii=False))
-    finally:
-        sample.unlink(missing_ok=True)
+    if data["metric_count"] != 1 or data["error_count"] != 1:
+        raise RuntimeError(f"self-test failed: {data}")
+    print(
+        json.dumps(
+            {"ok": True, "metric_count": data["metric_count"]}, ensure_ascii=False
+        )
+    )
 
 
 def main() -> int:
