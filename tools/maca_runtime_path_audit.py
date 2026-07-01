@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 
-ENV_VARS = ['LD_LIBRARY_PATH', 'PYTHONPATH', 'MACA_HOME']
+ENV_VARS = ["LD_LIBRARY_PATH", "PYTHONPATH", "MACA_HOME"]
 
 
 def split_paths(value: str) -> list[str]:
@@ -20,25 +20,48 @@ def split_paths(value: str) -> list[str]:
     return parts
 
 
+def normalize_path(raw: str) -> str:
+    return os.path.normpath(os.path.abspath(os.path.expanduser(raw)))
+
+
 def audit(env: dict[str, str]) -> dict[str, object]:
     findings: list[dict[str, str]] = []
     for name in ENV_VARS:
         seen: set[str] = set()
         for raw in split_paths(env.get(name, "")):
-            normalized = str(Path(raw))
+            normalized = normalize_path(raw)
             if normalized in seen:
-                findings.append({"env": name, "path": raw, "severity": "warning", "message": "duplicate path entry"})
+                findings.append(
+                    {
+                        "env": name,
+                        "path": raw,
+                        "severity": "warning",
+                        "message": "duplicate path entry",
+                    }
+                )
             seen.add(normalized)
-            if not Path(raw).exists():
-                findings.append({"env": name, "path": raw, "severity": "info", "message": "path does not exist in this container"})
+            if not Path(normalized).exists():
+                findings.append(
+                    {
+                        "env": name,
+                        "path": raw,
+                        "severity": "info",
+                        "message": "path does not exist in this container",
+                    }
+                )
     return {"finding_count": len(findings), "findings": findings}
 
 
 def self_test() -> None:
     missing = os.pathsep.join(["/definitely_missing", "/definitely_missing"])
     data = audit({"LD_LIBRARY_PATH": missing})
-    assert data["finding_count"] >= 2
-    print(json.dumps({"ok": True, "finding_count": data["finding_count"]}, ensure_ascii=False))
+    if data["finding_count"] < 2:
+        raise RuntimeError(f"self-test failed: {data}")
+    print(
+        json.dumps(
+            {"ok": True, "finding_count": data["finding_count"]}, ensure_ascii=False
+        )
+    )
 
 
 def main() -> int:
